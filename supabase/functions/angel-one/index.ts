@@ -53,59 +53,35 @@ function generateTOTP(secret: string): string {
   return code.toString().padStart(6, '0');
 }
 
-// Authenticate and get session token (tries password+TOTP first, then MPIN+TOTP fallback)
+// Authenticate and get session token using MPIN
 async function authenticateAngelOne(
   apiKey: string,
   clientId: string,
-  secretPin: string,
+  mpin: string,
   totp: string
 ): Promise<{ success: boolean; token?: string; feedToken?: string; error?: string }> {
   try {
-    const commonHeaders = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-UserType': 'USER',
-      'X-SourceID': 'WEB',
-      'X-ClientLocalIP': '127.0.0.1',
-      'X-ClientPublicIP': '127.0.0.1',
-      'X-MACAddress': '00:00:00:00:00:00',
-      'X-PrivateKey': apiKey
-    };
-
-    // Attempt loginByPassword (password should be 4-digit PIN as per SmartAPI docs)
-    let response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword', {
+    const response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByMpin', {
       method: 'POST',
-      headers: commonHeaders,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-UserType': 'USER',
+        'X-SourceID': 'WEB',
+        'X-ClientLocalIP': '127.0.0.1',
+        'X-ClientPublicIP': '127.0.0.1',
+        'X-MACAddress': '00:00:00:00:00:00',
+        'X-PrivateKey': apiKey
+      },
       body: JSON.stringify({
         clientcode: clientId,
-        password: secretPin,
+        mpin: mpin,
         totp: totp
       })
     });
 
-    let data = await response.json();
-    console.log('Angel One auth response (loginByPassword):', data);
-
-    // Fallback to loginByMpin if password flow is disallowed for this account
-    if ((!data?.status || !data?.data) &&
-        (data?.errorcode === 'AB7001' ||
-         (typeof data?.message === 'string' && data.message.toLowerCase().includes('loginbypassword is not allowed')))) {
-      try {
-        response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByMpin', {
-          method: 'POST',
-          headers: commonHeaders,
-          body: JSON.stringify({
-            clientcode: clientId,
-            mpin: secretPin,
-            totp: totp
-          })
-        });
-        data = await response.json();
-        console.log('Angel One auth response (loginByMpin):', data);
-      } catch (fbErr) {
-        console.error('Angel One MPIN fallback error:', fbErr);
-      }
-    }
+    const data = await response.json();
+    console.log('Angel One auth response (loginByMpin):', data);
 
     if (data?.status && data?.data) {
       return {
@@ -179,10 +155,10 @@ serve(async (req) => {
     const apiKey = Deno.env.get('ANGEL_ONE_API_KEY');
     const apiSecret = Deno.env.get('ANGEL_ONE_API_SECRET');
     const clientId = Deno.env.get('ANGEL_ONE_CLIENT_ID');
-    const password = Deno.env.get('ANGEL_ONE_PASSWORD');
+    const mpin = Deno.env.get('ANGEL_ONE_PASSWORD'); // This should be your 4-digit MPIN
     const totpSecret = Deno.env.get('ANGEL_ONE_TOTP_SECRET');
 
-    if (!apiKey || !apiSecret || !clientId || !password || !totpSecret) {
+    if (!apiKey || !apiSecret || !clientId || !mpin || !totpSecret) {
       return new Response(
         JSON.stringify({ error: 'Missing Angel One credentials' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -194,7 +170,7 @@ serve(async (req) => {
     console.log('Generated TOTP:', totp);
 
     // Authenticate
-    const authResult = await authenticateAngelOne(apiKey, clientId, password, totp);
+    const authResult = await authenticateAngelOne(apiKey, clientId, mpin, totp);
     
     if (!authResult.success || !authResult.token) {
       return new Response(
