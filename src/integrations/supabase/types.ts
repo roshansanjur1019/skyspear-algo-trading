@@ -53,6 +53,48 @@ export type Database = {
         }
         Relationships: []
       }
+      market_conditions_history: {
+        Row: {
+          created_at: string
+          historical_volatility: number | null
+          id: string
+          implied_volatility: number | null
+          market_trend: string | null
+          nifty_change_percent: number | null
+          nifty_spot_price: number
+          put_call_ratio: number | null
+          timestamp: string
+          vix: number
+          volume_profile: string | null
+        }
+        Insert: {
+          created_at?: string
+          historical_volatility?: number | null
+          id?: string
+          implied_volatility?: number | null
+          market_trend?: string | null
+          nifty_change_percent?: number | null
+          nifty_spot_price: number
+          put_call_ratio?: number | null
+          timestamp?: string
+          vix: number
+          volume_profile?: string | null
+        }
+        Update: {
+          created_at?: string
+          historical_volatility?: number | null
+          id?: string
+          implied_volatility?: number | null
+          market_trend?: string | null
+          nifty_change_percent?: number | null
+          nifty_spot_price?: number
+          put_call_ratio?: number | null
+          timestamp?: string
+          vix?: number
+          volume_profile?: string | null
+        }
+        Relationships: []
+      }
       market_data: {
         Row: {
           change_percent: number | null
@@ -80,6 +122,63 @@ export type Database = {
           timestamp?: string
           vix?: number | null
           volume?: number | null
+        }
+        Relationships: []
+      }
+      monthly_performance: {
+        Row: {
+          created_at: string
+          current_capital: number
+          current_drawdown: number | null
+          id: string
+          losing_trades: number | null
+          max_drawdown: number | null
+          month_year: string
+          monthly_target: number
+          monthly_target_percentage: number | null
+          risk_used_percentage: number | null
+          starting_capital: number
+          total_pnl: number | null
+          trades_count: number | null
+          updated_at: string
+          user_id: string
+          winning_trades: number | null
+        }
+        Insert: {
+          created_at?: string
+          current_capital: number
+          current_drawdown?: number | null
+          id?: string
+          losing_trades?: number | null
+          max_drawdown?: number | null
+          month_year: string
+          monthly_target: number
+          monthly_target_percentage?: number | null
+          risk_used_percentage?: number | null
+          starting_capital: number
+          total_pnl?: number | null
+          trades_count?: number | null
+          updated_at?: string
+          user_id: string
+          winning_trades?: number | null
+        }
+        Update: {
+          created_at?: string
+          current_capital?: number
+          current_drawdown?: number | null
+          id?: string
+          losing_trades?: number | null
+          max_drawdown?: number | null
+          month_year?: string
+          monthly_target?: number
+          monthly_target_percentage?: number | null
+          risk_used_percentage?: number | null
+          starting_capital?: number
+          total_pnl?: number | null
+          trades_count?: number | null
+          updated_at?: string
+          user_id?: string
+          winning_trades?: number | null
         }
         Relationships: []
       }
@@ -211,6 +310,59 @@ export type Database = {
           volatility_threshold?: number | null
         }
         Relationships: []
+      }
+      strategy_recommendations: {
+        Row: {
+          capital_required: number | null
+          confidence_level: string | null
+          created_at: string
+          executed_at: string | null
+          expected_return_percentage: number | null
+          id: string
+          is_executed: boolean | null
+          market_condition_id: string | null
+          reasoning: string | null
+          recommended_strategy: string
+          risk_percentage: number | null
+          user_id: string
+        }
+        Insert: {
+          capital_required?: number | null
+          confidence_level?: string | null
+          created_at?: string
+          executed_at?: string | null
+          expected_return_percentage?: number | null
+          id?: string
+          is_executed?: boolean | null
+          market_condition_id?: string | null
+          reasoning?: string | null
+          recommended_strategy: string
+          risk_percentage?: number | null
+          user_id: string
+        }
+        Update: {
+          capital_required?: number | null
+          confidence_level?: string | null
+          created_at?: string
+          executed_at?: string | null
+          expected_return_percentage?: number | null
+          id?: string
+          is_executed?: boolean | null
+          market_condition_id?: string | null
+          reasoning?: string | null
+          recommended_strategy?: string
+          risk_percentage?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "strategy_recommendations_market_condition_id_fkey"
+            columns: ["market_condition_id"]
+            isOneToOne: false
+            referencedRelation: "market_conditions_history"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trade_legs: {
         Row: {
