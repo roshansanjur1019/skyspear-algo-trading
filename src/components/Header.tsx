@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Settings, User, LogOut } from "lucide-react";
+import { TrendingUp, Settings, User, LogOut, LayoutDashboard } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +16,7 @@ interface HeaderProps {
 }
 
 const Header = ({ user, onLogin, onLogout }: HeaderProps) => {
+  const navigate = useNavigate();
   return (
     <header className="border-b border-border bg-card shadow-card">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -49,6 +51,10 @@ const Header = ({ user, onLogin, onLogout }: HeaderProps) => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => navigate('/dashboard')}>
+                  <LayoutDashboard className="h-4 w-4 mr-2" />
+                  Dashboard
+                </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Settings className="h-4 w-4 mr-2" />
                   Settings

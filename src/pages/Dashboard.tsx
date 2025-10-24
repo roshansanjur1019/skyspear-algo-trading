@@ -76,7 +76,7 @@ const Dashboard = () => {
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4 cursor-pointer" onClick={() => navigate("/")}>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
                 Skyspear
               </h1>

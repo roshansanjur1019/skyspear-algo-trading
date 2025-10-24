@@ -15,16 +15,12 @@ const Index = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser(session.user);
-        navigate("/dashboard");
       }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
-      if (session) {
-        navigate("/dashboard");
-      }
     });
 
     return () => subscription.unsubscribe();
