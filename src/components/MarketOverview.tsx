@@ -1,6 +1,10 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, BarChart3, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, BarChart3, Activity, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface MarketData {
   symbol: string;
@@ -11,8 +15,8 @@ interface MarketData {
 }
 
 const MarketOverview = () => {
-  // Mock data - in real app, this would come from live API
-  const marketData: MarketData[] = [
+  const { toast } = useToast();
+  const [marketData, setMarketData] = useState<MarketData[]>([
     {
       symbol: "NIFTY",
       price: 24756.75,
@@ -41,7 +45,40 @@ const MarketOverview = () => {
       changePercent: -6.98,
       volume: 0
     }
-  ];
+  ]);
+  const [loading, setLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+
+  const fetchLiveData = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('angel-one', {
+        body: { action: 'fetchMarketData' }
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.data) {
+        console.log('Angel One market data:', data.data);
+        toast({
+          title: "Live Data Loaded",
+          description: "Successfully fetched live market data from Angel One",
+        });
+        setLastUpdate(new Date());
+        // You can update marketData here when Angel One returns the data in expected format
+      } else {
+        throw new Error(data?.error || "Failed to fetch market data");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to Fetch Live Data",
+        description: error.message || "Using cached market data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -64,7 +101,27 @@ const MarketOverview = () => {
     <section className="py-12 bg-gradient-to-br from-background to-muted/20">
       <div className="container mx-auto px-4">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold mb-4">Live Market Overview</h2>
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <h2 className="text-3xl font-bold">Live Market Overview</h2>
+            <Button 
+              onClick={fetchLiveData} 
+              disabled={loading}
+              size="sm"
+              variant="outline"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Fetch Live Data
+                </>
+              )}
+            </Button>
+          </div>
           <p className="text-muted-foreground">Real-time market data for algorithmic trading decisions</p>
         </div>
 
@@ -125,7 +182,7 @@ const MarketOverview = () => {
 
         <div className="mt-8 text-center">
           <p className="text-sm text-muted-foreground">
-            Market data updates every few seconds • Last updated: {new Date().toLocaleTimeString()}
+            Market data updates every few seconds • Last updated: {lastUpdate.toLocaleTimeString()}
           </p>
         </div>
       </div>

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Plus } from "lucide-react";
+import { CheckCircle2, XCircle, Plus, RefreshCw } from "lucide-react";
 
 interface BrokerIntegrationProps {
   userId: string;
@@ -16,6 +16,7 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
   const { toast } = useToast();
   const [brokers, setBrokers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [testingConnection, setTestingConnection] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedBroker, setSelectedBroker] = useState<"zerodha" | "angel_one">("zerodha");
   const [credentials, setCredentials] = useState({
@@ -94,6 +95,34 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
         description: error.message,
         variant: "destructive",
       });
+    }
+  };
+
+  const testAngelOneConnection = async (brokerId: string) => {
+    setTestingConnection(brokerId);
+    try {
+      const { data, error } = await supabase.functions.invoke('angel-one', {
+        body: { action: 'fetchMarketData' }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast({
+          title: "Connection Successful",
+          description: "Angel One credentials are working. Received live market data.",
+        });
+      } else {
+        throw new Error(data?.error || "Failed to fetch market data");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to connect to Angel One",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingConnection(null);
     }
   };
 
@@ -205,6 +234,23 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
                       <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
                         Inactive
                       </Badge>
+                    )}
+                    {broker.is_active && broker.broker_type === "angel_one" && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => testAngelOneConnection(broker.id)}
+                        disabled={testingConnection === broker.id}
+                      >
+                        {testingConnection === broker.id ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Testing...
+                          </>
+                        ) : (
+                          "Test Connection"
+                        )}
+                      </Button>
                     )}
                     {broker.is_active && (
                       <Button 
