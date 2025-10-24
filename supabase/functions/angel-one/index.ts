@@ -61,6 +61,10 @@ async function authenticateAngelOne(
   totp: string
 ): Promise<{ success: boolean; token?: string; feedToken?: string; error?: string }> {
   try {
+    console.log('Attempting Angel One authentication...');
+    console.log('Client ID:', clientId);
+    console.log('TOTP:', totp);
+    
     const response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByMpin', {
       method: 'POST',
       headers: {
@@ -79,6 +83,19 @@ async function authenticateAngelOne(
         totp: totp
       })
     });
+
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Non-JSON response received:', text.substring(0, 200));
+      return {
+        success: false,
+        error: `API returned non-JSON response. Status: ${response.status}. This might indicate an API endpoint issue or blocked request.`
+      };
+    }
 
     const data = await response.json();
     console.log('Angel One auth response (loginByMpin):', data);
