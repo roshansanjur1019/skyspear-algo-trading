@@ -6,12 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Mail, Lock, User, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
-interface AuthFormProps {
-  onSuccess: () => void;
-}
-
-const AuthForm = ({ onSuccess }: AuthFormProps) => {
+const AuthForm = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
@@ -19,7 +19,6 @@ const AuthForm = ({ onSuccess }: AuthFormProps) => {
     fullName: "",
     confirmPassword: ""
   });
-  const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -31,21 +30,25 @@ const AuthForm = ({ onSuccess }: AuthFormProps) => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
+    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      const { error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (error) throw error;
+
       toast({
         title: "Login Successful",
-        description: "Welcome back to NIFTY Algo Trader!",
+        description: "Welcome back!",
       });
       
-      onSuccess();
-    } catch (error) {
+      navigate("/dashboard");
+    } catch (error: any) {
       toast({
         title: "Login Failed",
-        description: "Please check your credentials and try again.",
+        description: error.message || "Invalid credentials.",
         variant: "destructive",
       });
     } finally {
@@ -59,28 +62,38 @@ const AuthForm = ({ onSuccess }: AuthFormProps) => {
     if (formData.password !== formData.confirmPassword) {
       toast({
         title: "Password Mismatch",
-        description: "Please ensure passwords match.",
+        description: "Passwords do not match.",
         variant: "destructive",
       });
       return;
     }
 
     setIsLoading(true);
-
+    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      const { error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+          data: {
+            full_name: formData.fullName,
+          }
+        }
+      });
+
+      if (error) throw error;
+
       toast({
-        title: "Account Created!",
-        description: "Welcome to NIFTY Algo Trader. You can now start trading!",
+        title: "Account Created",
+        description: "Please check your email to verify your account.",
       });
       
-      onSuccess();
-    } catch (error) {
+      navigate("/dashboard");
+    } catch (error: any) {
       toast({
         title: "Signup Failed",
-        description: "Please try again or contact support.",
+        description: error.message,
         variant: "destructive",
       });
     } finally {
@@ -93,7 +106,7 @@ const AuthForm = ({ onSuccess }: AuthFormProps) => {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            NIFTY Algo Trader
+            Skyspear
           </h1>
           <p className="text-muted-foreground mt-2">
             Start your automated trading journey

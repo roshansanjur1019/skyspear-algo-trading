@@ -1,40 +1,51 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import MarketOverview from "@/components/MarketOverview";
 import StrategyExplanation from "@/components/StrategyExplanation";
-import PricingSection from "@/components/PricingSection";
-import AuthForm from "@/components/AuthForm";
 
 const Index = () => {
-  const [user, setUser] = useState(null);
-  const [showAuth, setShowAuth] = useState(false);
+  const navigate = useNavigate();
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    // Check if user is already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        navigate("/dashboard");
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      if (session) {
+        navigate("/dashboard");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleLogin = () => {
-    setShowAuth(true);
+    navigate("/auth");
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-  };
-
-  const handleAuthSuccess = () => {
-    setUser({ email: "trader@example.com" }); // Mock user
-    setShowAuth(false);
   };
 
   const handleGetStarted = () => {
     if (user) {
-      // Redirect to dashboard
-      console.log("Redirect to dashboard");
+      navigate("/dashboard");
     } else {
-      setShowAuth(true);
+      navigate("/auth");
     }
   };
-
-  if (showAuth && !user) {
-    return <AuthForm onSuccess={handleAuthSuccess} />;
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -48,7 +59,6 @@ const Index = () => {
         <HeroSection onGetStarted={handleGetStarted} />
         <MarketOverview />
         <StrategyExplanation />
-        <PricingSection onGetStarted={handleGetStarted} />
       </main>
 
       <footer className="bg-card border-t border-border py-12">
@@ -56,7 +66,7 @@ const Index = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="md:col-span-2">
               <h3 className="text-xl font-bold mb-4 bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-                NIFTY Algo Trader
+                Skyspear
               </h3>
               <p className="text-muted-foreground mb-4">
                 Professional automated options trading platform for consistent profits 
@@ -89,7 +99,7 @@ const Index = () => {
           </div>
           
           <div className="border-t border-border mt-8 pt-8 text-center text-sm text-muted-foreground">
-            <p>&copy; 2024 NIFTY Algo Trader. All rights reserved.</p>
+            <p>&copy; 2024 Skyspear. All rights reserved.</p>
           </div>
         </div>
       </footer>

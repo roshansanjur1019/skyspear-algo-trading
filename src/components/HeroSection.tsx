@@ -28,17 +28,15 @@ const HeroSection = ({ onGetStarted }: HeroSectionProps) => {
           </div>
 
           <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-            Automated{" "}
-            <span className="bg-gradient-to-r from-primary via-primary-glow to-profit bg-clip-text text-transparent">
-              NIFTY Trading
+            Automated Options Trading <br />
+            <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
+              Made Simple
             </span>
-            <br />
-            Made Simple
           </h1>
 
           <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed">
-            Professional algorithmic trading platform for NIFTY options. Execute profitable short strangle strategies 
-            daily with advanced risk management and real-time market data integration.
+            Professional algo trading platform for executing automated strategies 
+            with intelligent risk management and real-time market execution.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">

@@ -65,13 +65,12 @@ const StrategyExplanation = () => {
   ];
 
   return (
-    <section id="features" className="py-16 bg-muted/10">
+    <section id="strategy" className="py-16 bg-background">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold mb-4">Short Strangle Strategy</h2>
+          <h2 className="text-4xl font-bold mb-4">How Our Platform Works</h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Our proven algorithmic approach to NIFTY options trading with systematic risk management 
-            and consistent profit booking mechanisms.
+            Automated trading strategies that execute trades based on proven algorithms and real-time market data.
           </p>
         </div>
 
