@@ -6,26 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Base32 decoder
-function base32Decode(base32: string): Uint8Array {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  const cleanedInput = base32.toUpperCase().replace(/=+$/, '');
-  
-  let bits = '';
-  for (const char of cleanedInput) {
-    const val = alphabet.indexOf(char);
-    if (val === -1) throw new Error('Invalid base32 character');
-    bits += val.toString(2).padStart(5, '0');
-  }
-  
-  const bytes = [];
-  for (let i = 0; i + 8 <= bits.length; i += 8) {
-    bytes.push(parseInt(bits.slice(i, i + 8), 2));
-  }
-  
-  return new Uint8Array(bytes);
-}
-
 // Generate TOTP code
 function generateTOTP(secret: string): string {
   const epoch = Math.floor(Date.now() / 1000);
@@ -36,17 +16,8 @@ function generateTOTP(secret: string): string {
   const view = new DataView(buffer);
   view.setBigUint64(0, BigInt(counter), false);
   
-  // Decode base32 secret
-  let secretBytes: Uint8Array;
-  try {
-    secretBytes = base32Decode(secret);
-  } catch (e) {
-    console.error('Failed to decode base32 secret, using raw secret');
-    secretBytes = new TextEncoder().encode(secret);
-  }
-  
   // Create HMAC
-  const hmac = createHmac('sha1', secretBytes);
+  const hmac = createHmac('sha1', secret);
   hmac.update(new Uint8Array(buffer));
   const hash = new Uint8Array(hmac.digest());
   
