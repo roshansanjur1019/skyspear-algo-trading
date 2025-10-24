@@ -1,1 +1,4 @@
 project_id = "blnphqmmsjlxlqnrmriw"
+
+[functions.angel-one]
+verify_jwt = false
