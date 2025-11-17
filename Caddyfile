@@ -1,0 +1,11 @@
+{$DOMAIN} {
+  reverse_proxy frontend:3000
+}
+
+www.{$DOMAIN} {
+  redir https://{$DOMAIN}{uri}
+}
+
+api.{$DOMAIN} {
+  reverse_proxy angel-one:8000
+}
