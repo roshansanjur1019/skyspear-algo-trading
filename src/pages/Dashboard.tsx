@@ -18,31 +18,38 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check authentication
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate("/");
-        return;
-      }
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
 
-      setUser(session.user);
-      
-      // Fetch user profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .single();
-      
-      setProfile(profileData);
-      setLoading(false);
+        if (!session) {
+          navigate("/");
+          return;
+        }
+
+        setUser(session.user);
+
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .single();
+
+        if (profileError) {
+          console.warn("Failed to load profile:", profileError.message);
+        }
+
+        setProfile(profileData ?? null);
+      } catch (err) {
+        console.error("Auth/profile load error:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     checkAuth();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         navigate("/");

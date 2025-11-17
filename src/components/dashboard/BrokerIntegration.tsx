@@ -101,19 +101,35 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
   const testAngelOneConnection = async (brokerId: string) => {
     setTestingConnection(brokerId);
     try {
-      const { data, error } = await supabase.functions.invoke('angel-one', {
-        body: { action: 'fetchMarketData' }
-      });
-
-      if (error) throw error;
-
-      if (data?.success) {
-        toast({
-          title: "Connection Successful",
-          description: "Angel One credentials are working. Received live market data.",
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      if (backendUrl) {
+        const res = await fetch(`${backendUrl}/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'fetchMarketData' }),
         });
+        const data = await res.json();
+        if (data?.success) {
+          toast({
+            title: "Connection Successful",
+            description: "Angel One credentials are working. Received live market data.",
+          });
+        } else {
+          throw new Error(data?.error || "Failed to fetch market data");
+        }
       } else {
-        throw new Error(data?.error || "Failed to fetch market data");
+        const { data, error } = await supabase.functions.invoke('angel-one', {
+          body: { action: 'fetchMarketData' }
+        });
+        if (error) throw error;
+        if (data?.success) {
+          toast({
+            title: "Connection Successful",
+            description: "Angel One credentials are working. Received live market data.",
+          });
+        } else {
+          throw new Error(data?.error || "Failed to fetch market data");
+        }
       }
     } catch (error: any) {
       toast({

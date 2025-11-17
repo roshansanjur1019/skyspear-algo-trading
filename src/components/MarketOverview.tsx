@@ -52,22 +52,37 @@ const MarketOverview = () => {
   const fetchLiveData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('angel-one', {
-        body: { action: 'fetchMarketData' }
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data?.data) {
-        console.log('Angel One market data:', data.data);
-        toast({
-          title: "Live Data Loaded",
-          description: "Successfully fetched live market data from Angel One",
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      if (backendUrl) {
+        const res = await fetch(`${backendUrl}/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'fetchMarketData' }),
         });
-        setLastUpdate(new Date());
-        // You can update marketData here when Angel One returns the data in expected format
+        const data = await res.json();
+        if (data?.success && data?.data) {
+          toast({
+            title: "Live Data Loaded",
+            description: "Successfully fetched live market data from Angel One",
+          });
+          setLastUpdate(new Date());
+        } else {
+          throw new Error(data?.error || "Failed to fetch market data");
+        }
       } else {
-        throw new Error(data?.error || "Failed to fetch market data");
+        const { data, error } = await supabase.functions.invoke('angel-one', {
+          body: { action: 'fetchMarketData' }
+        });
+        if (error) throw error;
+        if (data?.success && data?.data) {
+          toast({
+            title: "Live Data Loaded",
+            description: "Successfully fetched live market data from Angel One",
+          });
+          setLastUpdate(new Date());
+        } else {
+          throw new Error(data?.error || "Failed to fetch market data");
+        }
       }
     } catch (error: any) {
       toast({

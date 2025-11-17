@@ -160,76 +160,78 @@ async function fetchMarketData(
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let action: string | undefined;
   try {
-    const { action } = await req.json();
+    const body = await req.json();
+    action = body?.action;
+  } catch (_) {
+    action = undefined;
+  }
 
-    // Get environment variables
+  if (req.method === 'GET' && !action) {
+    return new Response(JSON.stringify({ success: true, message: 'ok' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (!action) {
+    return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
     const apiKey = Deno.env.get('ANGEL_ONE_API_KEY');
     const apiSecret = Deno.env.get('ANGEL_ONE_API_SECRET');
     const clientId = Deno.env.get('ANGEL_ONE_CLIENT_ID');
-    const mpin = Deno.env.get('ANGEL_ONE_PASSWORD'); // This should be your 4-digit MPIN
+    const mpin = Deno.env.get('ANGEL_ONE_PASSWORD');
     const totpSecret = Deno.env.get('ANGEL_ONE_TOTP_SECRET');
 
     if (!apiKey || !apiSecret || !clientId || !mpin || !totpSecret) {
-      return new Response(
-        JSON.stringify({ error: 'Missing Angel One credentials' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Missing Angel One credentials' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Generate TOTP
     const totp = generateTOTP(totpSecret);
-    console.log('Generated TOTP:', totp);
-
-    // Authenticate
     const authResult = await authenticateAngelOne(apiKey, clientId, mpin, totp);
-    
+
     if (!authResult.success || !authResult.token) {
-      return new Response(
-        JSON.stringify({ error: authResult.error || 'Authentication failed' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: authResult.error || 'Authentication failed' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (action === 'authenticate') {
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Authentication successful',
-          token: authResult.token,
-          feedToken: authResult.feedToken
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: true, message: 'Authentication successful', token: authResult.token, feedToken: authResult.feedToken }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
     if (action === 'fetchMarketData') {
       const marketData = await fetchMarketData(authResult.token, apiKey, clientId);
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          data: marketData 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ success: true, data: marketData }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    return new Response(
-      JSON.stringify({ error: 'Invalid action' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    return new Response(JSON.stringify({ error: 'Invalid action' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error) {
     console.error('Error in angel-one function:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

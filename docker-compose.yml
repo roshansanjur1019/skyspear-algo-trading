@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  angel-one:
+    image: denoland/deno:1.43.6
+    working_dir: /app
+    volumes:
+      - ./supabase/functions/angel-one:/app:ro
+    command: deno run --allow-net --allow-env index.ts
+    ports:
+      - "8000:8000"
+    environment:
+      - ANGEL_ONE_API_KEY=${ANGEL_ONE_API_KEY}
+      - ANGEL_ONE_API_SECRET=${ANGEL_ONE_API_SECRET}
+      - ANGEL_ONE_CLIENT_ID=${ANGEL_ONE_CLIENT_ID}
+      - ANGEL_ONE_PASSWORD=${ANGEL_ONE_PASSWORD}
+      - ANGEL_ONE_TOTP_SECRET=${ANGEL_ONE_TOTP_SECRET}
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VITE_BACKEND_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - angel-one
