@@ -22,13 +22,14 @@ jobs:
           script: |
             set -e
             if ! command -v docker >/dev/null 2>&1; then
-              curl -fsSL https://get.docker.com | sh
+              curl -fsSL https://get.docker.com -o /tmp/install-docker.sh
+              sudo sh /tmp/install-docker.sh
             fi
+            sudo systemctl enable --now docker || true
             if ! docker compose version >/dev/null 2>&1; then
-              DOCKER_CONFIG=${HOME}/.docker
-              mkdir -p $DOCKER_CONFIG/cli-plugins
-              curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
-              chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
+              sudo mkdir -p /usr/local/lib/docker/cli-plugins
+              sudo curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
             fi
             mkdir -p ~/apps/nifty-stride-trader
             cd ~/apps/nifty-stride-trader
@@ -44,5 +45,5 @@ jobs:
             echo "ANGEL_ONE_PASSWORD=${{ secrets.ANGEL_ONE_PASSWORD }}" >> .env.angelone
             echo "ANGEL_ONE_TOTP_SECRET=${{ secrets.ANGEL_ONE_TOTP_SECRET }}" >> .env.angelone
             echo "DOMAIN=${{ secrets.DOMAIN }}" > .env.hosting
-            docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend
-            docker compose --env-file .env.angelone --env-file .env.hosting up -d
+            sudo docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend
+            sudo docker compose --env-file .env.angelone --env-file .env.hosting up -d
