@@ -78,7 +78,10 @@ async function authenticateAngelOne(
         'X-MACAddress': macAddress || '00:00:00:00:00:00',
         'X-ClientID': clientId,
         'X-ClientCode': clientId,
-        'User-Agent': 'Mozilla/5.0 (compatible; Skyspear/1.0; +https://skyspear.in)',
+        'Origin': 'https://smartapi.angelbroking.com',
+        'Referer': 'https://smartapi.angelbroking.com/',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0',
         'X-PrivateKey': apiKey
       },
       body: JSON.stringify({
@@ -135,18 +138,20 @@ async function fetchMarketData(
   try {
     const mode = options?.mode || 'LTP';
     const exchangeTokens = options?.exchangeTokens || { NSE: ['99926000','99926009','99926037','99926017'], BSE: ['99919000'] };
+    const envPublicIp = Deno.env.get('ANGEL_ONE_PUBLIC_IP');
+    const envLocalIp = Deno.env.get('ANGEL_ONE_LOCAL_IP');
+    const envMac = Deno.env.get('ANGEL_ONE_MAC_ADDRESS');
     const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
         'X-UserType': 'USER',
         'X-SourceID': 'WEB',
-        'X-ClientLocalIP': '127.0.0.1',
-        'X-ClientPublicIP': '127.0.0.1',
-        'X-MACAddress': '00:00:00:00:00:00',
+        'X-ClientLocalIP': envLocalIp || envPublicIp || '127.0.0.1',
+        'X-ClientPublicIP': envPublicIp || '127.0.0.1',
+        'X-MACAddress': envMac || '00:00:00:00:00:00',
         'X-ClientID': clientId,
         'X-ClientCode': clientId,
         'Origin': 'https://smartapi.angelbroking.com',
