@@ -36,6 +36,12 @@ async function createAuthenticatedClient(credentials) {
 
     // Generate TOTP
     const totp = generateTOTP(totpSecret)
+    console.log('[SDK] Attempting authentication with:', {
+      clientId: clientId,
+      hasPassword: !!password,
+      hasMPIN: !!mpin,
+      totpLength: totp ? totp.length : 0
+    })
 
     // Authenticate using generateSession
     // SDK's generateSession uses loginByPassword internally (recommended by Angel One)
@@ -48,20 +54,59 @@ async function createAuthenticatedClient(credentials) {
       return { success: false, error: 'Authentication failed: No response from SDK' }
     }
 
+    // Log full response for debugging (remove sensitive data in production)
+    console.log('[SDK] Authentication response structure:', {
+      hasStatus: !!sessionData.status,
+      hasData: !!sessionData.data,
+      hasJwtToken: !!(sessionData.data?.jwtToken || sessionData.jwtToken),
+      message: sessionData.message || 'No message'
+    })
+
     // Handle both response formats
-    const responseData = sessionData.data || sessionData
-    const jwtToken = responseData.jwtToken || responseData.access_token
-    const refreshToken = responseData.refreshToken || responseData.refresh_token
-    const feedToken = responseData.feedToken || responseData.feed_token
+    // Format 1: { status: true, data: { jwtToken, refreshToken, feedToken } }
+    // Format 2: { jwtToken, refreshToken, feedToken } (direct)
+    let responseData = sessionData
+    if (sessionData.data) {
+      responseData = sessionData.data
+    }
+
+    // Try multiple ways to get tokens from SDK response
+    let jwtToken = responseData.jwtToken || responseData.access_token || responseData.token
+    let refreshToken = responseData.refreshToken || responseData.refresh_token
+    let feedToken = responseData.feedToken || responseData.feed_token
+
+    // SDK might store tokens in the client instance after generateSession
+    // Check if tokens are stored in the client instance
+    if (!jwtToken && smartApi.access_token) {
+      jwtToken = smartApi.access_token
+      refreshToken = smartApi.refresh_token
+      feedToken = smartApi.feed_token || smartApi.getfeedToken?.()
+    }
 
     if (!jwtToken) {
-      console.error('[SDK] Authentication response:', JSON.stringify(sessionData, null, 2))
-      return { success: false, error: 'Authentication failed: No JWT token received. Check credentials and TOTP.' }
+      console.error('[SDK] Authentication failed - Full response:', JSON.stringify(sessionData, null, 2))
+      console.error('[SDK] Client instance properties:', {
+        hasAccessToken: !!smartApi.access_token,
+        hasRefreshToken: !!smartApi.refresh_token,
+        hasFeedToken: !!smartApi.feed_token,
+        clientKeys: Object.keys(smartApi).slice(0, 10)
+      })
+      const errorMsg = sessionData.message || sessionData.error || 'No JWT token received'
+      return { 
+        success: false, 
+        error: `Authentication failed: ${errorMsg}. Check credentials (API key, client ID, password, TOTP secret).` 
+      }
     }
 
     // SDK automatically stores tokens in instance properties when generateSession is called
     // Tokens are stored as: smartApi.access_token and smartApi.refresh_token
-    // No need to manually set them - the SDK handles this automatically
+    // Ensure tokens are set in client instance
+    if (smartApi.access_token !== jwtToken) {
+      smartApi.access_token = jwtToken
+    }
+    if (smartApi.refresh_token !== refreshToken) {
+      smartApi.refresh_token = refreshToken
+    }
 
     return {
       success: true,

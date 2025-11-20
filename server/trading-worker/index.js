@@ -165,6 +165,50 @@ app.get('/health', (req, res) => {
   res.json({ ok: true })
 })
 
+// Test endpoint to check authentication (for debugging)
+app.post('/test-auth', async (req, res) => {
+  try {
+    const apiKey = process.env.ANGEL_ONE_API_KEY
+    const clientId = process.env.ANGEL_ONE_CLIENT_ID
+    const password = process.env.ANGEL_ONE_PASSWORD
+    const mpin = process.env.ANGEL_ONE_PASSWORD
+    const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
+
+    if (!apiKey || !clientId || !totpSecret || (!password && !mpin)) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Missing credentials',
+        missing: {
+          apiKey: !apiKey,
+          clientId: !clientId,
+          password: !password,
+          mpin: !mpin,
+          totpSecret: !totpSecret
+        }
+      })
+    }
+
+    const auth = await createAuthenticatedClient({
+      apiKey,
+      clientId,
+      password: password || mpin,
+      mpin: mpin,
+      totpSecret
+    })
+
+    return res.json({
+      success: auth.success,
+      error: auth.error,
+      hasClient: !!auth.client,
+      hasToken: !!auth.token,
+      hasFeedToken: !!auth.feedToken,
+      clientHasAccessToken: !!(auth.client?.access_token)
+    })
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // Enhanced Precheck endpoint with market intelligence and broker funds
 app.post('/precheck', async (req, res) => {
   try {
