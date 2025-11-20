@@ -8,11 +8,20 @@ const corsHeaders = {
 
 // Simple encryption using Web Crypto API with a project-specific key
 async function encryptCredential(credential: string): Promise<string> {
+  if (!credential || credential.trim().length === 0) {
+    throw new Error('Cannot encrypt empty credential');
+  }
+  
   const encoder = new TextEncoder();
   const data = encoder.encode(credential);
   
-  // Use a key derived from Supabase JWT secret for encryption
-  const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET') || '';
+  // Use a key derived from JWT secret for encryption
+  // Note: Secret name cannot start with "SUPABASE_" prefix (Supabase restriction)
+  const jwtSecret = Deno.env.get('JWT_SECRET') || Deno.env.get('BROKER_ENCRYPTION_SECRET') || '';
+  if (!jwtSecret || jwtSecret.length === 0) {
+    throw new Error('JWT_SECRET or BROKER_ENCRYPTION_SECRET environment variable is not set. Please configure it in Supabase Edge Function settings.');
+  }
+  
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     encoder.encode(jwtSecret),
@@ -176,11 +185,20 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error storing broker credentials:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    
+    // Return more detailed error information
+    const statusCode = errorMessage.includes('Unauthorized') ? 401 : 
+                      errorMessage.includes('Missing') ? 400 : 500;
+    
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ 
+        success: false, 
+        error: errorMessage,
+        details: error instanceof Error ? error.stack : undefined
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status: statusCode,
       }
     );
   }

@@ -144,8 +144,19 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
         body: requestBody
       });
 
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Failed to store credentials');
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(error.message || 'Failed to invoke edge function');
+      }
+      
+      if (!data) {
+        throw new Error('No response from edge function');
+      }
+      
+      if (!data.success) {
+        console.error('Edge function returned error:', data.error);
+        throw new Error(data.error || 'Failed to store credentials');
+      }
 
       toast({
         title: "Broker Connected",
