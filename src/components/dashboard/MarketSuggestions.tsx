@@ -12,49 +12,65 @@ const MarketSuggestions = ({ userId }: MarketSuggestionsProps) => {
   const [vix, setVix] = useState<number>(15.2);
   const [trend, setTrend] = useState<string>("Sideways");
   
-  // Simulated market analysis - in production, this would fetch real data
+  // Fetch real market intelligence
   useEffect(() => {
-    // Simulate real-time market data updates
-    const interval = setInterval(() => {
-      const randomVix = (Math.random() * 10 + 12).toFixed(1);
-      setVix(parseFloat(randomVix));
-      
-      if (parseFloat(randomVix) < 15) {
-        setMarketCondition("Low Volatility");
-        setTrend("Sideways");
-      } else if (parseFloat(randomVix) < 20) {
-        setMarketCondition("Moderate");
-        setTrend("Choppy");
-      } else {
-        setMarketCondition("High Volatility");
-        setTrend("Trending");
+    const fetchMarketIntelligence = async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL;
+        if (backendUrl) {
+          const res = await fetch(`${backendUrl}/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getMarketIntelligence' }),
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.conditions) {
+              setVix(data.conditions.vix || 15);
+              setMarketCondition(
+                data.conditions.volatilityLevel === 'high' ? 'High Volatility' :
+                data.conditions.volatilityLevel === 'low' ? 'Low Volatility' : 'Moderate'
+              );
+              setTrend(
+                data.conditions.trend === 'volatile' ? 'Trending' :
+                data.conditions.trend === 'stable' ? 'Sideways' : 'Choppy'
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch market intelligence:', error);
       }
-    }, 10000);
-    
+    };
+
+    fetchMarketIntelligence();
+    const interval = setInterval(fetchMarketIntelligence, 60000); // Update every minute
     return () => clearInterval(interval);
   }, []);
 
   const getSuggestedStrategy = () => {
+    // Use market intelligence-based recommendations
     if (vix < 15) {
       return {
-        name: "Short Strangle",
-        reason: "Low volatility ideal for premium collection",
-        confidence: "High",
-        icon: <TrendingDown className="h-4 w-4" />,
+        name: "Long Straddle",
+        reason: "Low VIX, potential breakout - buying strategies favored",
+        confidence: "Medium",
+        icon: <TrendingUp className="h-4 w-4" />,
       };
     } else if (vix < 20) {
       return {
-        name: "Iron Condor",
-        reason: "Moderate volatility suits limited risk strategies",
+        name: "Short Strangle",
+        reason: "Normal volatility, range-bound - premium collection ideal",
         confidence: "Medium",
-        icon: <Activity className="h-4 w-4" />,
+        icon: <TrendingDown className="h-4 w-4" />,
       };
     } else {
       return {
-        name: "Long Straddle",
-        reason: "High volatility favors directional option buying",
+        name: "Iron Condor",
+        reason: "High VIX favors premium collection with limited risk",
         confidence: "High",
-        icon: <TrendingUp className="h-4 w-4" />,
+        icon: <Activity className="h-4 w-4" />,
       };
     }
   };

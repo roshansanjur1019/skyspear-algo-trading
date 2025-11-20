@@ -9,6 +9,7 @@ import { Plus, Play, Pause, Settings, TrendingUp, Shield, TrendingDown, Sparkles
 import StrategyConfigForm from "./StrategyConfigForm";
 import MarketSuggestions from "./MarketSuggestions";
 import AutoExecuteDialog from "./AutoExecuteDialog";
+import AutoExecuteBanner from "./AutoExecuteBanner";
 
 interface StrategyManagerProps {
   userId: string;
@@ -131,19 +132,45 @@ const StrategyManager = ({ userId }: StrategyManagerProps) => {
   };
 
   const handleAutoExecuteToggle = async (enabled: boolean) => {
-    setAutoExecuteEnabled(enabled);
     if (enabled) {
       setShowAutoDialog(true);
-      toast({
-        title: "Auto-Execution Enabled",
-        description: "Pre-checking funds and VIX for Short Strangle",
-      });
     } else {
-      toast({
-        title: "Auto-Execution Disabled",
-        description: "Auto-execution has been disabled",
-      });
+      // Disable auto-execute
+      try {
+        const { data: strategyConfig } = await supabase
+          .from('strategy_configs')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('strategy_name', 'Short Strangle')
+          .single();
+
+        if (strategyConfig) {
+          const { error } = await supabase
+            .from('strategy_configs')
+            .update({ auto_execute_enabled: false })
+            .eq('id', strategyConfig.id);
+
+          if (error) throw error;
+        }
+
+        setAutoExecuteEnabled(false);
+        toast({
+          title: "Auto-Execution Disabled",
+          description: "Auto-execution has been disabled",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to disable auto-execute",
+          variant: "destructive",
+        });
+      }
     }
+  };
+
+  const handleAutoExecuteEnabled = (lotSize: number) => {
+    setAutoExecuteEnabled(true);
+    fetchStrategies(); // Refresh to show updated status
   };
 
   if (loading) {
@@ -168,6 +195,9 @@ const StrategyManager = ({ userId }: StrategyManagerProps) => {
 
   return (
     <div className="space-y-6">
+      {/* Auto-Execute Status Banner */}
+      <AutoExecuteBanner userId={userId} />
+
       {/* Market Intelligence & Auto-Execute */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
@@ -199,7 +229,13 @@ const StrategyManager = ({ userId }: StrategyManagerProps) => {
             )}
           </CardContent>
         </Card>
-        <AutoExecuteDialog open={showAutoDialog} onClose={() => setShowAutoDialog(false)} userId={userId} />
+        <AutoExecuteDialog 
+          open={showAutoDialog} 
+          onClose={() => setShowAutoDialog(false)} 
+          userId={userId}
+          strategyName="Short Strangle"
+          onEnable={handleAutoExecuteEnabled}
+        />
       </div>
 
       {/* Featured Strategy - Skyspear Short Strangle */}
