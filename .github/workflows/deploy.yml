@@ -51,6 +51,7 @@ jobs:
             echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.hosting
             echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env.hosting
             echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.hosting
+            echo "SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}" >> .env.hosting
             # Clean up Docker to free disk space
             echo "Cleaning up Docker to free disk space..."
             sudo docker system prune -af --volumes || true

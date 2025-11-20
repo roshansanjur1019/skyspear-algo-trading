@@ -73,17 +73,33 @@ async function createAuthenticatedClient(credentials) {
 }
 
 /**
- * Generate TOTP from Base32 secret
+ * Generate TOTP from Base32 secret (Node.js compatible)
  * @param {string} secret - Base32 encoded TOTP secret
  * @returns {string} - 6-digit TOTP code
  */
 function generateTOTP(secret) {
-  const base32 = require('base32')
   const crypto = require('crypto')
 
   try {
+    // Base32 decode (RFC 4648)
+    function base32ToBytes(base32) {
+      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+      const cleaned = (base32 || '').replace(/=+$/, '').replace(/\s+/g, '').toUpperCase()
+      let bits = ''
+      for (const c of cleaned) {
+        const val = alphabet.indexOf(c)
+        if (val === -1) continue
+        bits += val.toString(2).padStart(5, '0')
+      }
+      const bytes = []
+      for (let i = 0; i + 8 <= bits.length; i += 8) {
+        bytes.push(parseInt(bits.substring(i, i + 8), 2))
+      }
+      return Buffer.from(bytes)
+    }
+
     // Decode base32 secret
-    const key = Buffer.from(base32.decode(secret))
+    const key = base32ToBytes(secret)
 
     // Get current time step (30 seconds)
     const timeStep = Math.floor(Date.now() / 1000 / 30)
@@ -92,7 +108,7 @@ function generateTOTP(secret) {
     const timeBuffer = Buffer.allocUnsafe(8)
     timeBuffer.writeUInt32BE(timeStep, 4)
 
-    // Calculate HMAC-SHA1
+    // Calculate HMAC-SHA1 using Node.js crypto
     const hmac = crypto.createHmac('sha1', key)
     hmac.update(timeBuffer)
     const hash = hmac.digest()
@@ -124,23 +140,51 @@ async function getMarketData(client, options) {
   try {
     const { mode = 'LTP', exchangeTokens } = options
 
-    // SmartAPI SDK's getMarketData method
-    // The SDK expects exchangeTokens in format: { "NSE": ["3045"], "NFO": ["58662"] }
-    const response = await client.getMarketData(exchangeTokens, mode)
+    // SmartAPI SDK method - check available methods
+    let response
+    
+    try {
+      // Try getMarketData method (most common)
+      if (typeof client.getMarketData === 'function') {
+        response = await client.getMarketData(exchangeTokens, mode)
+      } 
+      // Try quote method (alternative name)
+      else if (typeof client.quote === 'function') {
+        response = await client.quote(exchangeTokens, mode)
+      }
+      // Try getQuote method
+      else if (typeof client.getQuote === 'function') {
+        response = await client.getQuote(exchangeTokens, mode)
+      }
+      else {
+        // Log available methods for debugging
+        console.error('[SDK] Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(client)))
+        throw new Error('SDK does not have getMarketData, quote, or getQuote method')
+      }
+    } catch (sdkError) {
+      console.error('[SDK] Method call error:', sdkError.message)
+      throw sdkError
+    }
 
     // SDK returns: { status: true, message: 'SUCCESS', data: { fetched: [...], unfetched: [...] } }
-    // Or might return the data directly - handle both cases
-    const marketData = response?.data || response
+    if (response && response.status !== false) {
+      return {
+        success: true,
+        data: response.data || { fetched: [], unfetched: [] }
+      }
+    }
 
     return {
-      success: response?.status !== false,
-      data: marketData || { fetched: [], unfetched: [] }
+      success: false,
+      error: response?.message || 'Failed to fetch market data',
+      data: { fetched: [], unfetched: [] }
     }
   } catch (error) {
-    console.error('Market data fetch error:', error)
+    console.error('[SDK] Market data fetch error:', error.message || error)
     return {
       success: false,
-      error: error.message || 'Failed to fetch market data'
+      error: error.message || 'Failed to fetch market data',
+      data: { fetched: [], unfetched: [] }
     }
   }
 }
@@ -386,6 +430,70 @@ async function createOrderWebSocket(params, onTick) {
   }
 }
 
+/**
+ * Refresh JWT token using refresh token (as per Angel One documentation)
+ * @param {SmartAPI} client - Authenticated SmartAPI client
+ * @returns {Promise<Object>} - { success: boolean, token?: string, refreshToken?: string, feedToken?: string, error?: string }
+ */
+async function refreshToken(client) {
+  try {
+    const refreshToken = client.getRefreshToken()
+    if (!refreshToken) {
+      return { success: false, error: 'No refresh token available' }
+    }
+
+    // SDK's refreshToken method should handle this
+    const response = await client.refreshToken()
+
+    if (response && response.data) {
+      const { jwtToken, refreshToken: newRefreshToken, feedToken } = response.data
+
+      // Update tokens in client
+      client.setAccessToken(jwtToken)
+      client.setRefreshToken(newRefreshToken)
+
+      return {
+        success: true,
+        token: jwtToken,
+        refreshToken: newRefreshToken,
+        feedToken: feedToken
+      }
+    }
+
+    return { success: false, error: 'Token refresh failed' }
+  } catch (error) {
+    console.error('Token refresh error:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to refresh token'
+    }
+  }
+}
+
+/**
+ * Logout from Angel One (as per Angel One best practice - logout daily)
+ * @param {SmartAPI} client - Authenticated SmartAPI client
+ * @param {string} clientCode - Client code
+ * @returns {Promise<Object>} - { success: boolean, error?: string }
+ */
+async function logout(client, clientCode) {
+  try {
+    // SDK's logout method should handle this
+    const response = await client.logout(clientCode)
+
+    return {
+      success: response?.status === true,
+      error: response?.status === false ? (response?.message || 'Logout failed') : null
+    }
+  } catch (error) {
+    console.error('Logout error:', error)
+    return {
+      success: false,
+      error: error.message || 'Failed to logout'
+    }
+  }
+}
+
 module.exports = {
   createAuthenticatedClient,
   getMarketData,
@@ -396,6 +504,8 @@ module.exports = {
   getTradeBook,
   getOptionChain,
   createOrderWebSocket,
-  generateTOTP
+  generateTOTP,
+  refreshToken,
+  logout
 }
 

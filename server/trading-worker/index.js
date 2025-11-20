@@ -16,6 +16,28 @@ const {
 } = require('./angelOneSDK')
 
 const app = express()
+
+// CORS must be FIRST - before bodyParser and routes
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+  const allowedOrigins = process.env.CORS_ALLOW_ORIGIN 
+    ? process.env.CORS_ALLOW_ORIGIN.split(',')
+    : ['https://skyspear.in', 'http://localhost:5173', 'http://localhost:3000', '*']
+  
+  if (allowedOrigins.includes('*') || (origin && allowedOrigins.includes(origin))) {
+    res.header('Access-Control-Allow-Origin', origin || '*')
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization')
+  res.header('Access-Control-Allow-Credentials', 'true')
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200)
+  }
+  next()
+})
+
 app.use(bodyParser.json())
 
 // Supabase client for database access
@@ -30,49 +52,38 @@ const SERVER_LOCAL_IP = process.env.ANGEL_ONE_LOCAL_IP || '172.31.26.44'
 const SERVER_MAC_ADDRESS = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
 
 // ===== CREDENTIAL DECRYPTION =====
-// Decrypt credentials using same method as Supabase function
+// Decrypt credentials using Node.js crypto (not Web Crypto API)
 async function decryptCredential(encryptedCredential) {
   try {
     if (!encryptedCredential) return null
 
     // Decode base64
-    const combined = Uint8Array.from(atob(encryptedCredential), c => c.charCodeAt(0))
+    const combined = Buffer.from(encryptedCredential, 'base64')
     
     // Extract IV (first 12 bytes) and encrypted data
     const iv = combined.slice(0, 12)
     const encryptedData = combined.slice(12)
+    const tag = encryptedData.slice(-16) // GCM tag is last 16 bytes
+    const ciphertext = encryptedData.slice(0, -16)
 
-    // Derive key from JWT secret (same as encryption)
-    const encoder = new TextEncoder()
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(SUPABASE_JWT_SECRET),
-      { name: 'PBKDF2' },
-      false,
-      ['deriveKey']
+    // Derive key from JWT secret using PBKDF2 (Node.js crypto)
+    const salt = Buffer.from('skyspear-broker-salt', 'utf8')
+    const key = crypto.pbkdf2Sync(
+      SUPABASE_JWT_SECRET,
+      salt,
+      100000,
+      32, // 256 bits = 32 bytes
+      'sha256'
     )
 
-    const key = await crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: encoder.encode('skyspear-broker-salt'),
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['decrypt']
-    )
+    // Decrypt using AES-256-GCM
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(tag)
+    
+    let decrypted = decipher.update(ciphertext, null, 'utf8')
+    decrypted += decipher.final('utf8')
 
-    // Decrypt
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      encryptedData
-    )
-
-    return new TextDecoder().decode(decrypted)
+    return decrypted
   } catch (error) {
     console.error('Decryption error:', error)
     return null
@@ -143,19 +154,7 @@ const LOT_SIZES = {
   SENSEX: 20
 }
 
-// Basic CORS support for browser calls
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', process.env.CORS_ALLOW_ORIGIN || '*')
-  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-  )
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200)
-  }
-  next()
-})
+// CORS middleware removed - already defined above
 
 // Simple health + default route
 app.get('/', (req, res) => {
@@ -462,108 +461,7 @@ async function getOptionChain({ token, apiKey, clientId, publicIp, localIp, macA
   }
 }
 
-async function placeOrder({ token, apiKey, clientId, publicIp, localIp, macAddress, orderParams }) {
-  try {
-    // Try LIMIT order first
-    const limitOrder = {
-      ...orderParams,
-      producttype: orderParams.producttype || 'INTRADAY',
-      ordertype: 'LIMIT',
-      price: orderParams.price || orderParams.ltp || 0,
-      validity: 'DAY'
-    }
-
-    const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/placeOrder', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'X-UserType': 'USER',
-        'X-SourceID': 'WEB',
-        'X-ClientLocalIP': localIp,
-        'X-ClientPublicIP': publicIp,
-        'X-MACAddress': macAddress,
-        'X-PrivateKey': apiKey,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      body: JSON.stringify(limitOrder)
-    })
-
-    const data = await response.json()
-    
-    if (data?.status && data?.data?.orderid) {
-      return { success: true, data, orderId: data.data.orderid, orderType: 'LIMIT' }
-    }
-
-    // If LIMIT fails, try MARKET order
-    if (data?.message?.includes('price') || data?.errorcode) {
-      const marketOrder = {
-        ...orderParams,
-        producttype: orderParams.producttype || 'INTRADAY',
-        ordertype: 'MARKET',
-        validity: 'DAY'
-      }
-
-      const marketResponse = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/placeOrder', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'X-UserType': 'USER',
-          'X-SourceID': 'WEB',
-          'X-ClientLocalIP': localIp,
-          'X-ClientPublicIP': publicIp,
-          'X-MACAddress': macAddress,
-          'X-PrivateKey': apiKey,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        },
-        body: JSON.stringify(marketOrder)
-      })
-
-      const marketData = await marketResponse.json()
-      return {
-        success: marketData?.status === true,
-        data: marketData,
-        orderId: marketData?.data?.orderid,
-        orderType: 'MARKET'
-      }
-    }
-
-    return { success: false, error: data?.message || 'Order placement failed', data }
-  } catch (error) {
-    console.error('Order placement error:', error)
-    return { success: false, error: error.message }
-  }
-}
-
-async function cancelOrder({ token, apiKey, clientId, publicIp, localIp, macAddress, orderId }) {
-  try {
-    const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/cancelOrder', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'X-UserType': 'USER',
-        'X-SourceID': 'WEB',
-        'X-ClientLocalIP': localIp,
-        'X-ClientPublicIP': publicIp,
-        'X-MACAddress': macAddress,
-        'X-PrivateKey': apiKey,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      body: JSON.stringify({ orderid: orderId, variety: 'NORMAL' })
-    })
-
-    const data = await response.json()
-    return { success: data?.status === true, data }
-  } catch (error) {
-    console.error('Cancel order error:', error)
-    return { success: false, error: error.message }
-  }
-}
+// Old placeOrder and cancelOrder functions removed - now using SDK wrapper from angelOneSDK.js
 
 // ===== TRAILING STOP LOSS MODULE =====
 function calculateTrailingSL(currentProfitPct, trailSLSteps) {
@@ -634,20 +532,17 @@ async function executeAveraging({ tradeId, legId, currentPrice, averagingAmount,
       return { success: false, error: 'Insufficient capital for averaging' }
     }
 
-    // Place buy order for averaging
-    const avgOrder = await placeOrder({
-      token: auth.token,
-      apiKey, clientId, publicIp, localIp, macAddress,
-      orderParams: {
-        variety: 'NORMAL',
-        tradingsymbol: leg.tradingsymbol || '',
-        symboltoken: leg.symboltoken || '',
-        transactiontype: 'BUY',
-        exchange: 'NFO',
-        ordertype: 'LIMIT',
-        producttype: 'MIS',
-        duration: 'DAY',
-        price: currentPrice,
+    // Place buy order for averaging using SDK
+    const avgOrder = await placeOrder(auth.client, {
+      variety: 'NORMAL',
+      tradingsymbol: leg.tradingsymbol || '',
+      symboltoken: leg.symboltoken || '',
+      transactiontype: 'BUY',
+      exchange: 'NFO',
+      ordertype: 'LIMIT',
+      producttype: 'MIS',
+      duration: 'DAY',
+      price: currentPrice,
         quantity: averagingQuantity
       }
     })
@@ -984,14 +879,8 @@ async function executeShortStrangleExit(userId, executionRunId) {
     for (const trade of trades) {
       for (const leg of trade.trade_legs || []) {
         if (leg.exit_price === null && leg.entry_order_id) {
-          // Get current market price for the leg
-          const currentPrice = await fetchMarketData({
-            token: auth.token,
-            apiKey: userCredentials.apiKey,
-            clientId: userCredentials.clientId,
-            publicIp: userCredentials.publicIp,
-            localIp: userCredentials.localIp,
-            macAddress: userCredentials.macAddress,
+          // Get current market price for the leg using SDK
+          const currentPrice = await getMarketData(auth.client, {
             mode: 'LTP',
             exchangeTokens: {
               NFO: [leg.symboltoken || ''] // Need to store symboltoken in trade_legs
@@ -1000,25 +889,17 @@ async function executeShortStrangleExit(userId, executionRunId) {
 
           const ltp = currentPrice?.data?.fetched?.[0]?.ltp || leg.entry_price
 
-          // Place market order to close using user's credentials
-          const closeOrder = await placeOrder({
-            token: auth.token,
-            apiKey: userCredentials.apiKey,
-            clientId: userCredentials.clientId,
-            publicIp: userCredentials.publicIp,
-            localIp: userCredentials.localIp,
-            macAddress: userCredentials.macAddress,
-            orderParams: {
-              variety: 'NORMAL',
-              tradingsymbol: leg.tradingsymbol || '',
-              symboltoken: leg.symboltoken || '',
-              transactiontype: 'BUY', // Opposite of SELL entry
-              exchange: 'NFO',
-              ordertype: 'MARKET', // Fast execution for exit
-              producttype: 'MIS',
-              duration: 'DAY',
-              quantity: leg.quantity
-            }
+          // Place market order to close using SDK
+          const closeOrder = await placeOrder(auth.client, {
+            variety: 'NORMAL',
+            tradingsymbol: leg.tradingsymbol || '',
+            symboltoken: leg.symboltoken || '',
+            transactiontype: 'BUY', // Opposite of SELL entry
+            exchange: 'NFO',
+            ordertype: 'MARKET', // Fast execution for exit
+            producttype: 'MIS',
+            duration: 'DAY',
+            quantity: leg.quantity
           })
 
           if (closeOrder.success) {
@@ -1089,15 +970,13 @@ async function monitorTrailingSL() {
         continue
       }
 
-      // Authenticate using user's credentials
-      const auth = await authenticateAngelOne({
+      // Authenticate using user's credentials with SDK
+      const auth = await createAuthenticatedClient({
         apiKey: userCredentials.apiKey,
         clientId: userCredentials.clientId,
+        password: userCredentials.password,
         mpin: userCredentials.mpin,
-        totpSecret: userCredentials.totpSecret,
-        publicIp: userCredentials.publicIp,
-        localIp: userCredentials.localIp,
-        macAddress: userCredentials.macAddress
+        totpSecret: userCredentials.totpSecret
       })
 
       if (!auth.success) {
@@ -1119,13 +998,7 @@ async function monitorTrailingSL() {
         // Fetch current prices
         const symbolTokens = (trade.trade_legs || []).map(leg => leg.symboltoken).filter(Boolean)
         if (symbolTokens.length > 0) {
-          const currentPrices = await fetchMarketData({
-            token: auth.token,
-            apiKey: userCredentials.apiKey,
-            clientId: userCredentials.clientId,
-            publicIp: userCredentials.publicIp,
-            localIp: userCredentials.localIp,
-            macAddress: userCredentials.macAddress,
+          const currentPrices = await getMarketData(auth.client, {
             mode: 'LTP',
             exchangeTokens: { NFO: symbolTokens }
           })
@@ -1153,27 +1026,19 @@ async function monitorTrailingSL() {
 
           // Check if trailing SL hit
           if (shouldExitOnTrailingSL(currentProfitPct, trailingSLPct)) {
-            // Exit the position using user's credentials
+            // Exit the position using SDK
             for (const leg of trade.trade_legs || []) {
               if (leg.exit_price === null) {
-                await placeOrder({
-                  token: auth.token,
-                  apiKey: userCredentials.apiKey,
-                  clientId: userCredentials.clientId,
-                  publicIp: userCredentials.publicIp,
-                  localIp: userCredentials.localIp,
-                  macAddress: userCredentials.macAddress,
-                  orderParams: {
-                    variety: 'NORMAL',
-                    tradingsymbol: leg.tradingsymbol || '',
-                    symboltoken: leg.symboltoken || '',
-                    transactiontype: 'BUY',
-                    exchange: 'NFO',
-                    ordertype: 'MARKET',
-                    producttype: 'MIS',
-                    duration: 'DAY',
-                    quantity: leg.quantity
-                  }
+                await placeOrder(auth.client, {
+                  variety: 'NORMAL',
+                  tradingsymbol: leg.tradingsymbol || '',
+                  symboltoken: leg.symboltoken || '',
+                  transactiontype: 'BUY',
+                  exchange: 'NFO',
+                  ordertype: 'MARKET',
+                  producttype: 'MIS',
+                  duration: 'DAY',
+                  quantity: leg.quantity
                 })
               }
             }
@@ -1232,21 +1097,15 @@ async function monitorAndExitStrategies({ minProfitPct, breakeven, maxLossPct })
         const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
         const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
 
-        const auth = await authenticateAngelOne({
-          apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
+        const auth = await createAuthenticatedClient({
+          apiKey, clientId, password: mpin, mpin, totpSecret
         })
 
           if (auth.success && auth.token) {
             // Fetch current prices for all legs using user's credentials
             const symbolTokens = (trade.trade_legs || []).map(leg => leg.symboltoken).filter(Boolean)
             if (symbolTokens.length > 0) {
-              const currentPrices = await fetchMarketData({
-                token: auth.token,
-                apiKey: userCredentials.apiKey,
-                clientId: userCredentials.clientId,
-                publicIp: userCredentials.publicIp,
-                localIp: userCredentials.localIp,
-                macAddress: userCredentials.macAddress,
+              const currentPrices = await getMarketData(auth.client, {
                 mode: 'LTP',
                 exchangeTokens: { NFO: symbolTokens }
               })
@@ -1285,24 +1144,16 @@ async function monitorAndExitStrategies({ minProfitPct, breakeven, maxLossPct })
           if (auth.success && auth.token) {
             for (const leg of trade.trade_legs || []) {
               if (leg.exit_price === null) {
-                await placeOrder({
-                  token: auth.token,
-                  apiKey: userCredentials.apiKey,
-                  clientId: userCredentials.clientId,
-                  publicIp: userCredentials.publicIp,
-                  localIp: userCredentials.localIp,
-                  macAddress: userCredentials.macAddress,
-                  orderParams: {
-                    variety: 'NORMAL',
-                    tradingsymbol: leg.tradingsymbol || '',
-                    symboltoken: leg.symboltoken || '',
-                    transactiontype: 'BUY',
-                    exchange: 'NFO',
-                    ordertype: 'MARKET',
-                    producttype: 'MIS',
-                    duration: 'DAY',
-                    quantity: leg.quantity
-                  }
+                await placeOrder(auth.client, {
+                  variety: 'NORMAL',
+                  tradingsymbol: leg.tradingsymbol || '',
+                  symboltoken: leg.symboltoken || '',
+                  transactiontype: 'BUY',
+                  exchange: 'NFO',
+                  ordertype: 'MARKET',
+                  producttype: 'MIS',
+                  duration: 'DAY',
+                  quantity: leg.quantity
                 })
               }
             }
@@ -1467,64 +1318,7 @@ app.post('/', async (req, res) => {
 // WebSocket connection for real-time order status updates
 let wsConnections = new Map()
 
-async function connectOrderWebSocket({ token, feedToken, apiKey, clientId }) {
-  try {
-    // Angel One WebSocket URL (example - verify actual URL from docs)
-    const wsUrl = `wss://smartapis.angelone.in/ws?jwttoken=${token}&feedtoken=${feedToken}`
-    
-    const WebSocket = require('ws')
-    const ws = new WebSocket(wsUrl)
-
-    ws.on('open', () => {
-      console.log('[WebSocket] Connected to Angel One order feed')
-      // Subscribe to order updates
-      ws.send(JSON.stringify({
-        action: 'subscribe',
-        mode: 'order'
-      }))
-    })
-
-    ws.on('message', async (data) => {
-      try {
-        const message = JSON.parse(data.toString())
-        
-        if (message.type === 'order_update') {
-          const { orderid, status, filledqty } = message
-          
-          // Update trade leg order status
-          if (supabase) {
-            await supabase
-              .from('trade_legs')
-              .update({
-                order_status: status === 'FILLED' ? 'filled' : status === 'CANCELLED' ? 'cancelled' : 'pending'
-              })
-              .eq('entry_order_id', orderid)
-              .or(`exit_order_id.eq.${orderid}`)
-          }
-        }
-      } catch (err) {
-        console.error('[WebSocket] Message processing error:', err)
-      }
-    })
-
-    ws.on('error', (error) => {
-      console.error('[WebSocket] Error:', error)
-    })
-
-    ws.on('close', () => {
-      console.log('[WebSocket] Connection closed, reconnecting...')
-      // Reconnect after 5 seconds
-      setTimeout(() => {
-        connectOrderWebSocket({ token, feedToken, apiKey, clientId })
-      }, 5000)
-    })
-
-    return ws
-  } catch (error) {
-    console.error('[WebSocket] Connection error:', error)
-    return null
-  }
-}
+// Old connectOrderWebSocket function removed - now using SDK wrapper (createOrderWebSocket) from angelOneSDK.js
 
 // Initialize WebSocket on startup (if credentials available)
 if (process.env.ANGEL_ONE_API_KEY && process.env.ANGEL_ONE_TOTP_SECRET) {
@@ -1532,23 +1326,30 @@ if (process.env.ANGEL_ONE_API_KEY && process.env.ANGEL_ONE_TOTP_SECRET) {
     try {
       const apiKey = process.env.ANGEL_ONE_API_KEY
       const clientId = process.env.ANGEL_ONE_CLIENT_ID
-      const mpin = process.env.ANGEL_ONE_PASSWORD
+      const password = process.env.ANGEL_ONE_PASSWORD
+      const mpin = process.env.ANGEL_ONE_PASSWORD // Fallback
       const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-      const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-      const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-      const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
 
-      const auth = await authenticateAngelOne({
-        apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
+      // Use SDK wrapper for authentication
+      const auth = await createAuthenticatedClient({
+        apiKey,
+        clientId,
+        password: password || mpin,
+        mpin: mpin,
+        totpSecret
       })
 
-      if (auth.success && auth.feedToken) {
-        const ws = await connectOrderWebSocket({
-          token: auth.token,
-          feedToken: auth.feedToken,
-          apiKey,
-          clientId
-        })
+      if (auth.success && auth.feedToken && auth.client) {
+        const ws = await createOrderWebSocket(
+          {
+            clientCode: clientId,
+            feedToken: auth.feedToken
+          },
+          (data) => {
+            console.log('[WebSocket] Order update:', data)
+            // Handle order updates here
+          }
+        )
         if (ws) {
           wsConnections.set('default', ws)
           console.log('[WebSocket] Order monitoring initialized')
