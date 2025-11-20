@@ -51,6 +51,12 @@ jobs:
             echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.hosting
             echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env.hosting
             echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.hosting
+            # Clean up Docker to free disk space
+            echo "Cleaning up Docker to free disk space..."
+            sudo docker system prune -af --volumes || true
+            sudo docker builder prune -af || true
+            # Check disk space
+            df -h
             # Stop and remove trading-worker container to force recreation
             sudo docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
             sudo docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
