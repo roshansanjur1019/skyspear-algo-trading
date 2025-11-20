@@ -397,69 +397,7 @@ async function analyzeMarketIntelligence() {
 }
 
 // ===== ANGEL ONE ORDER & FUNDS APIS =====
-async function getBrokerFunds({ token, apiKey, clientId, publicIp, localIp, macAddress }) {
-  try {
-    const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/user/v1/getRMS', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'X-UserType': 'USER',
-        'X-SourceID': 'WEB',
-        'X-ClientLocalIP': localIp,
-        'X-ClientPublicIP': publicIp,
-        'X-MACAddress': macAddress,
-        'X-PrivateKey': apiKey,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    })
-
-    const data = await response.json()
-    if (data?.status && data?.data) {
-      return {
-        success: true,
-        availableFunds: parseFloat(data.data.availablecash) || 0,
-        usedMargin: parseFloat(data.data.usedmargin) || 0,
-        totalMargin: parseFloat(data.data.totalmargin) || 0
-      }
-    }
-    return { success: false, error: data?.message || 'Failed to fetch funds' }
-  } catch (error) {
-    console.error('Get broker funds error:', error)
-    return { success: false, error: error.message }
-  }
-}
-
-async function getOptionChain({ token, apiKey, clientId, publicIp, localIp, macAddress, symbol, expiryDate }) {
-  try {
-    const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/getOptionChain', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'X-UserType': 'USER',
-        'X-SourceID': 'WEB',
-        'X-ClientLocalIP': localIp,
-        'X-ClientPublicIP': publicIp,
-        'X-MACAddress': macAddress,
-        'X-PrivateKey': apiKey,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      body: JSON.stringify({
-        symbol: symbol || 'NIFTY',
-        expirydate: expiryDate || new Date().toISOString().split('T')[0]
-      })
-    })
-
-    const data = await response.json()
-    return { success: data?.status === true, data }
-  } catch (error) {
-    console.error('Get option chain error:', error)
-    return { success: false, error: error.message }
-  }
-}
+// Old getBrokerFunds and getOptionChain functions removed - now using SDK wrapper from angelOneSDK.js
 
 // Old placeOrder and cancelOrder functions removed - now using SDK wrapper from angelOneSDK.js
 
