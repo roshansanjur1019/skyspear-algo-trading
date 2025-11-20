@@ -2,166 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Professional Trading Platform Design System
-All colors MUST be HSL for consistency
-*/
-
 @layer base {
   :root {
-    /* Dark trading theme - primary backgrounds */
-    --background: 222 15% 8%;
-    --foreground: 210 20% 95%;
-
-    /* Card system for panels and widgets */
-    --card: 222 15% 10%;
-    --card-foreground: 210 20% 92%;
-
-    /* Popover and dropdown system */
-    --popover: 222 15% 12%;
-    --popover-foreground: 210 20% 95%;
-
-    /* Primary brand colors - blue accent */
-    --primary: 213 94% 68%;
-    --primary-foreground: 210 20% 5%;
-    --primary-glow: 213 94% 75%;
-
-    /* Secondary surfaces */
-    --secondary: 222 15% 15%;
-    --secondary-foreground: 210 20% 85%;
-
-    /* Muted text and subtle elements */
-    --muted: 222 15% 18%;
-    --muted-foreground: 210 10% 65%;
-
-    /* Accent highlights */
-    --accent: 222 15% 20%;
-    --accent-foreground: 210 20% 90%;
-
-    /* Destructive/loss colors */
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 20% 98%;
-
-    /* Trading specific colors */
-    --profit: 142 72% 45%;
-    --profit-foreground: 210 20% 98%;
-    --profit-glow: 142 72% 55%;
+    /* Dark base with deep blacks - inspired by modern crypto dashboards */
+    --background: 220 20% 6%;
+    --foreground: 180 5% 96%;
     
-    --loss: 0 72% 51%;
-    --loss-foreground: 210 20% 98%;
-    --loss-glow: 0 72% 60%;
-
-    /* Border and input system */
-    --border: 222 15% 22%;
-    --input: 222 15% 15%;
-    --ring: 213 94% 68%;
-
-    /* Chart colors for data visualization */
-    --chart-1: 213 94% 68%;
-    --chart-2: 142 72% 45%;
-    --chart-3: 45 93% 58%;
-    --chart-4: 270 95% 75%;
-    --chart-5: 0 72% 51%;
-
-    /* Gradients for modern effects */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-profit: linear-gradient(135deg, hsl(var(--profit)), hsl(var(--profit-glow)));
-    --gradient-loss: linear-gradient(135deg, hsl(var(--loss)), hsl(var(--loss-glow)));
-    --gradient-surface: linear-gradient(180deg, hsl(var(--card)), hsl(var(--background)));
-
-    /* Shadows with brand colors */
-    --shadow-primary: 0 10px 30px -10px hsl(var(--primary) / 0.3);
-    --shadow-profit: 0 4px 20px -4px hsl(var(--profit) / 0.25);
-    --shadow-loss: 0 4px 20px -4px hsl(var(--loss) / 0.25);
-    --shadow-card: 0 4px 12px -2px hsl(222 15% 4% / 0.4);
-
-    /* Animation variables */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-bounce: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-
+    /* Card surfaces with subtle elevation */
+    --card: 220 18% 9%;
+    --card-foreground: 180 5% 96%;
+    
+    --popover: 220 18% 9%;
+    --popover-foreground: 180 5% 96%;
+    
+    /* Vibrant teal/cyan primary - signature color */
+    --primary: 174 100% 50%;
+    --primary-foreground: 220 20% 6%;
+    --primary-glow: 174 100% 65%;
+    
+    /* Muted teal secondary */
+    --secondary: 174 40% 20%;
+    --secondary-foreground: 174 100% 90%;
+    
+    /* Subtle muted surfaces */
+    --muted: 220 15% 15%;
+    --muted-foreground: 180 5% 60%;
+    
+    /* Accent teal */
+    --accent: 174 60% 45%;
+    --accent-foreground: 180 5% 96%;
+    
+    /* Destructive red */
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 180 5% 96%;
+    
+    /* Borders and inputs */
+    --border: 220 15% 18%;
+    --input: 220 15% 15%;
+    --ring: 174 100% 50%;
+    
     --radius: 0.75rem;
-
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-}
-
-/* Trading-specific utility classes */
-@layer components {
-  .profit-text {
-    @apply text-profit;
-  }
-  
-  .loss-text {
-    @apply text-loss;
-  }
-  
-  .gradient-primary {
-    background: var(--gradient-primary);
-  }
-  
-  .gradient-profit {
-    background: var(--gradient-profit);
-  }
-  
-  .gradient-loss {
-    background: var(--gradient-loss);
-  }
-  
-  .shadow-primary {
-    box-shadow: var(--shadow-primary);
-  }
-  
-  .shadow-profit {
-    box-shadow: var(--shadow-profit);
-  }
-  
-  .shadow-loss {
-    box-shadow: var(--shadow-loss);
-  }
-  
-  .shadow-card {
-    box-shadow: var(--shadow-card);
-  }
-  
-  .transition-smooth {
-    transition: var(--transition-smooth);
-  }
-  
-  .transition-bounce {
-    transition: var(--transition-bounce);
-  }
-  
-  .trading-grid {
-    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6;
-  }
-  
-  .market-widget {
-    @apply bg-card rounded-lg p-6 shadow-card border border-border transition-smooth hover:shadow-primary;
-  }
-  
-  .price-display {
-    @apply font-mono text-2xl font-bold;
-  }
-  
-  .price-change-positive {
-    @apply profit-text;
-  }
-  
-  .price-change-negative {
-    @apply loss-text;
+    
+    /* Chart colors with teal theme */
+    --chart-1: 174 100% 50%;
+    --chart-2: 142 76% 45%;
+    --chart-3: 200 90% 55%;
+    --chart-4: 150 65% 50%;
+    --chart-5: 190 80% 60%;
+    
+    /* Trading specific colors */
+    --profit: 142.1 76.2% 45%;
+    --profit-foreground: 220 20% 6%;
+    --profit-glow: 142.1 70% 60%;
+    
+    --loss: 0 84.2% 55%;
+    --loss-foreground: 180 5% 96%;
+    --loss-glow: 0 84.2% 70%;
+    
+    /* Sidebar specific colors */
+    --sidebar-background: 220 18% 8%;
+    --sidebar-foreground: 180 5% 96%;
+    --sidebar-primary: 174 100% 50%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 174 40% 20%;
+    --sidebar-accent-foreground: 174 100% 90%;
+    --sidebar-border: 220 15% 18%;
+    --sidebar-ring: 174 100% 50%;
   }
 }
 

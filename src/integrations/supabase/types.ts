@@ -53,6 +53,68 @@ export type Database = {
         }
         Relationships: []
       }
+      execution_runs: {
+        Row: {
+          allocated_capital: number
+          created_at: string
+          date: string
+          entry_time: string | null
+          exit_time: string | null
+          id: string
+          nifty_spot_at_entry: number | null
+          reason: string | null
+          status: string
+          strategy_config_id: string
+          strike_gap_used: number | null
+          updated_at: string
+          used_capital: number | null
+          user_id: string
+          vix_at_entry: number | null
+        }
+        Insert: {
+          allocated_capital: number
+          created_at?: string
+          date: string
+          entry_time?: string | null
+          exit_time?: string | null
+          id?: string
+          nifty_spot_at_entry?: number | null
+          reason?: string | null
+          status?: string
+          strategy_config_id: string
+          strike_gap_used?: number | null
+          updated_at?: string
+          used_capital?: number | null
+          user_id: string
+          vix_at_entry?: number | null
+        }
+        Update: {
+          allocated_capital?: number
+          created_at?: string
+          date?: string
+          entry_time?: string | null
+          exit_time?: string | null
+          id?: string
+          nifty_spot_at_entry?: number | null
+          reason?: string | null
+          status?: string
+          strategy_config_id?: string
+          strike_gap_used?: number | null
+          updated_at?: string
+          used_capital?: number | null
+          user_id?: string
+          vix_at_entry?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "execution_runs_strategy_config_id_fkey"
+            columns: ["strategy_config_id"]
+            isOneToOne: false
+            referencedRelation: "strategy_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       market_conditions_history: {
         Row: {
           created_at: string
@@ -262,49 +324,76 @@ export type Database = {
       }
       strategy_configs: {
         Row: {
+          allocated_capital: number | null
+          auto_execute_enabled: boolean | null
           created_at: string
+          daily_loss_cap_absolute: number | null
           entry_time: string | null
           exit_time: string | null
+          fixed_timing: boolean | null
           high_volatility_gap: number | null
           id: string
           is_active: boolean | null
+          lot_size: number | null
           max_loss_per_trade: number | null
           minimum_premium_threshold: number | null
+          per_trade_capital_pct: number | null
           profit_booking_percentage: number | null
           strategy_name: string
+          strategy_type: string | null
           strike_gap_points: number | null
+          trail_sl_enabled: boolean | null
+          trail_sl_steps: Json | null
           updated_at: string
           user_id: string
           volatility_threshold: number | null
         }
         Insert: {
+          allocated_capital?: number | null
+          auto_execute_enabled?: boolean | null
           created_at?: string
+          daily_loss_cap_absolute?: number | null
           entry_time?: string | null
           exit_time?: string | null
+          fixed_timing?: boolean | null
           high_volatility_gap?: number | null
           id?: string
           is_active?: boolean | null
+          lot_size?: number | null
           max_loss_per_trade?: number | null
           minimum_premium_threshold?: number | null
+          per_trade_capital_pct?: number | null
           profit_booking_percentage?: number | null
           strategy_name?: string
+          strategy_type?: string | null
           strike_gap_points?: number | null
+          trail_sl_enabled?: boolean | null
+          trail_sl_steps?: Json | null
           updated_at?: string
           user_id: string
           volatility_threshold?: number | null
         }
         Update: {
+          allocated_capital?: number | null
+          auto_execute_enabled?: boolean | null
           created_at?: string
+          daily_loss_cap_absolute?: number | null
           entry_time?: string | null
           exit_time?: string | null
+          fixed_timing?: boolean | null
           high_volatility_gap?: number | null
           id?: string
           is_active?: boolean | null
+          lot_size?: number | null
           max_loss_per_trade?: number | null
           minimum_premium_threshold?: number | null
+          per_trade_capital_pct?: number | null
           profit_booking_percentage?: number | null
           strategy_name?: string
+          strategy_type?: string | null
           strike_gap_points?: number | null
+          trail_sl_enabled?: boolean | null
+          trail_sl_steps?: Json | null
           updated_at?: string
           user_id?: string
           volatility_threshold?: number | null
@@ -366,40 +455,79 @@ export type Database = {
       }
       trade_legs: {
         Row: {
+          averaging_entry_number: number | null
           created_at: string
+          entry_order_id: string | null
           entry_price: number | null
+          exit_order_id: string | null
           exit_price: number | null
           id: string
+          leg_status: string | null
           option_type: Database["public"]["Enums"]["option_type"]
+          order_status: string | null
+          order_type: string | null
           pnl: number | null
           premium: number
           quantity: number
+          stop_loss_price: number | null
           strike_price: number
+          symboltoken: string | null
+          target_price: number | null
           trade_id: string
+          tradingsymbol: string | null
+          trailing_sl_active: boolean | null
+          trailing_sl_steps_json: Json | null
+          trigger_price: number | null
         }
         Insert: {
+          averaging_entry_number?: number | null
           created_at?: string
+          entry_order_id?: string | null
           entry_price?: number | null
+          exit_order_id?: string | null
           exit_price?: number | null
           id?: string
+          leg_status?: string | null
           option_type: Database["public"]["Enums"]["option_type"]
+          order_status?: string | null
+          order_type?: string | null
           pnl?: number | null
           premium: number
           quantity: number
+          stop_loss_price?: number | null
           strike_price: number
+          symboltoken?: string | null
+          target_price?: number | null
           trade_id: string
+          tradingsymbol?: string | null
+          trailing_sl_active?: boolean | null
+          trailing_sl_steps_json?: Json | null
+          trigger_price?: number | null
         }
         Update: {
+          averaging_entry_number?: number | null
           created_at?: string
+          entry_order_id?: string | null
           entry_price?: number | null
+          exit_order_id?: string | null
           exit_price?: number | null
           id?: string
+          leg_status?: string | null
           option_type?: Database["public"]["Enums"]["option_type"]
+          order_status?: string | null
+          order_type?: string | null
           pnl?: number | null
           premium?: number
           quantity?: number
+          stop_loss_price?: number | null
           strike_price?: number
+          symboltoken?: string | null
+          target_price?: number | null
           trade_id?: string
+          tradingsymbol?: string | null
+          trailing_sl_active?: boolean | null
+          trailing_sl_steps_json?: Json | null
+          trigger_price?: number | null
         }
         Relationships: [
           {
@@ -413,45 +541,85 @@ export type Database = {
       }
       trades: {
         Row: {
+          allocated_capital: number | null
+          average_entry_price: number | null
           created_at: string
+          current_pnl_pct: number | null
           entry_time: string | null
+          execution_run_id: string | null
+          exit_reason: string | null
           exit_time: string | null
           id: string
+          lot_size: number | null
+          max_loss_pct: number | null
+          max_profit_pct: number | null
+          max_profit_reached: number | null
           nifty_price_at_entry: number | null
           strategy_config_id: string
           total_pnl: number | null
           total_premium_received: number | null
           trade_status: Database["public"]["Enums"]["trade_status"] | null
+          trailing_sl_price: number | null
           updated_at: string
+          used_capital: number | null
           user_id: string
         }
         Insert: {
+          allocated_capital?: number | null
+          average_entry_price?: number | null
           created_at?: string
+          current_pnl_pct?: number | null
           entry_time?: string | null
+          execution_run_id?: string | null
+          exit_reason?: string | null
           exit_time?: string | null
           id?: string
+          lot_size?: number | null
+          max_loss_pct?: number | null
+          max_profit_pct?: number | null
+          max_profit_reached?: number | null
           nifty_price_at_entry?: number | null
           strategy_config_id: string
           total_pnl?: number | null
           total_premium_received?: number | null
           trade_status?: Database["public"]["Enums"]["trade_status"] | null
+          trailing_sl_price?: number | null
           updated_at?: string
+          used_capital?: number | null
           user_id: string
         }
         Update: {
+          allocated_capital?: number | null
+          average_entry_price?: number | null
           created_at?: string
+          current_pnl_pct?: number | null
           entry_time?: string | null
+          execution_run_id?: string | null
+          exit_reason?: string | null
           exit_time?: string | null
           id?: string
+          lot_size?: number | null
+          max_loss_pct?: number | null
+          max_profit_pct?: number | null
+          max_profit_reached?: number | null
           nifty_price_at_entry?: number | null
           strategy_config_id?: string
           total_pnl?: number | null
           total_premium_received?: number | null
           trade_status?: Database["public"]["Enums"]["trade_status"] | null
+          trailing_sl_price?: number | null
           updated_at?: string
+          used_capital?: number | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trades_execution_run_id_fkey"
+            columns: ["execution_run_id"]
+            isOneToOne: false
+            referencedRelation: "execution_runs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trades_strategy_config_id_fkey"
             columns: ["strategy_config_id"]

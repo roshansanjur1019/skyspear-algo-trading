@@ -24,7 +24,7 @@ function base32ToBytes(base32: string): Uint8Array {
 }
 
 // Generate TOTP code
-function generateTOTP(secret: string): string {
+async function generateTOTP(secret: string): Promise<string> {
   const epoch = Math.floor(Date.now() / 1000);
   const counter = Math.floor(epoch / 30);
   
@@ -36,10 +36,16 @@ function generateTOTP(secret: string): string {
   // Decode base32 secret to raw bytes
   const keyBytes = base32ToBytes(secret);
 
-  // Create HMAC-SHA1 with decoded key
-  const hmac = createHmac('sha1', keyBytes);
-  hmac.update(new Uint8Array(buffer));
-  const hash = new Uint8Array(hmac.digest());
+  // Generate TOTP using Web Crypto API
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, buffer);
+  const hash = new Uint8Array(signature);
   
   // Dynamic truncation (use last nibble as offset)
   const offset = hash[hash.length - 1] & 0xf;
