@@ -15,7 +15,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - VITE_BACKEND_URL=https://api.skyspear.in
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-https://api.skyspear.in}
     ports:
       - "3000:3000"
     depends_on:
@@ -37,11 +37,13 @@ services:
   trading-worker:
     image: node:18-alpine
     working_dir: /app/server/trading-worker
-    command: ["node", "index.js"]
+    command: ["sh", "-c", "npm install --production && node index.js"]
+    env_file:
+      - ./.env.angelone
     environment:
       - PORT=4000
     volumes:
-      - ./:/app:ro
+      - ./:/app
     depends_on:
       - angel-one
 

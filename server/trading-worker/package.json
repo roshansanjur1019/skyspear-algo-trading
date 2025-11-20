@@ -1,0 +1,14 @@
+{
+  "name": "trading-worker",
+  "version": "1.0.0",
+  "description": "Express worker for Skyspear trading utilities",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0"
+  }
+}
+
