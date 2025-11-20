@@ -4,6 +4,11 @@
 
 const { SmartAPI, WebSocket, WebSocketV2 } = require('smartapi-javascript')
 
+// Authentication cache to avoid repeated TOTP generation
+// Sessions are valid until 12 midnight IST, so we can cache them
+const authCache = new Map() // key: `${apiKey}_${clientId}`, value: { client, token, feedToken, refreshToken, expiresAt }
+const CACHE_TTL = 23 * 60 * 60 * 1000 // 23 hours (sessions expire at midnight)
+
 /**
  * Create and authenticate SmartAPI client for a user
  * @param {Object} credentials - User's Angel One credentials
@@ -22,6 +27,21 @@ async function createAuthenticatedClient(credentials) {
       return { success: false, error: 'Missing required credentials: apiKey, clientId, or totpSecret' }
     }
 
+    // Check cache first - sessions are valid until midnight IST
+    const cacheKey = `${apiKey}_${clientId}`
+    const cached = authCache.get(cacheKey)
+    
+    if (cached && cached.expiresAt > Date.now()) {
+      console.log('[SDK] Using cached authentication (valid until midnight IST)')
+      return {
+        success: true,
+        client: cached.client,
+        token: cached.token,
+        feedToken: cached.feedToken,
+        refreshToken: cached.refreshToken
+      }
+    }
+
     // Use password if available, otherwise fallback to MPIN
     // Angel One recommends using password (loginByPassword) instead of MPIN (loginByMpin)
     const authPassword = password || mpin
@@ -34,19 +54,35 @@ async function createAuthenticatedClient(credentials) {
       api_key: apiKey
     })
 
-    // Generate TOTP
-    const totp = generateTOTP(totpSecret)
+    // Generate TOTP - try current time window first
+    let totp = generateTOTP(totpSecret, 0)
     console.log('[SDK] Attempting authentication with:', {
       clientId: clientId,
       hasPassword: !!password,
       hasMPIN: !!mpin,
-      totpLength: totp ? totp.length : 0
+      totpLength: totp ? totp.length : 0,
+      totp: totp // Log TOTP for debugging (remove in production)
     })
 
     // Authenticate using generateSession
     // SDK's generateSession uses loginByPassword internally (recommended by Angel One)
     // If only MPIN is provided, it will still work but password is preferred
-    const sessionData = await smartApi.generateSession(clientId, authPassword, totp)
+    let sessionData = await smartApi.generateSession(clientId, authPassword, totp)
+
+    // If authentication fails with "Invalid totp", try adjacent time windows (clock skew)
+    if (!sessionData || !sessionData.status || sessionData.message === 'Invalid totp') {
+      console.log('[SDK] TOTP failed, trying adjacent time windows for clock skew...')
+      
+      // Try previous time window (-1)
+      totp = generateTOTP(totpSecret, -1)
+      sessionData = await smartApi.generateSession(clientId, authPassword, totp)
+      
+      // If still fails, try next time window (+1)
+      if (!sessionData || !sessionData.status || sessionData.message === 'Invalid totp') {
+        totp = generateTOTP(totpSecret, 1)
+        sessionData = await smartApi.generateSession(clientId, authPassword, totp)
+      }
+    }
 
     // SDK returns: { status: true, message: 'SUCCESS', data: { jwtToken, refreshToken, feedToken } }
     // Or might return the data directly
@@ -108,6 +144,29 @@ async function createAuthenticatedClient(credentials) {
       smartApi.refresh_token = refreshToken
     }
 
+    // Cache the authentication - sessions are valid until 12 midnight IST
+    // Calculate expiry: next midnight IST (5:30 AM UTC = 12:00 AM IST)
+    const now = new Date()
+    const istMidnight = new Date(now)
+    istMidnight.setUTCHours(0, 0, 0, 0) // Set to midnight UTC
+    istMidnight.setUTCHours(istMidnight.getUTCHours() + 5) // Add 5 hours for IST
+    istMidnight.setUTCMinutes(istMidnight.getUTCMinutes() + 30) // Add 30 minutes for IST offset
+    
+    // If we've passed midnight IST today, set to next midnight
+    if (istMidnight <= now) {
+      istMidnight.setUTCDate(istMidnight.getUTCDate() + 1)
+    }
+    
+    authCache.set(cacheKey, {
+      client: smartApi,
+      token: jwtToken,
+      feedToken: feedToken,
+      refreshToken: refreshToken,
+      expiresAt: istMidnight.getTime()
+    })
+    
+    console.log('[SDK] Authentication successful and cached until midnight IST')
+
     return {
       success: true,
       client: smartApi,
@@ -126,10 +185,12 @@ async function createAuthenticatedClient(credentials) {
 
 /**
  * Generate TOTP from Base32 secret (Node.js compatible)
+ * Handles clock skew by trying current and adjacent time windows
  * @param {string} secret - Base32 encoded TOTP secret
+ * @param {number} timeWindowOffset - Optional offset for clock skew (-1, 0, or 1)
  * @returns {string} - 6-digit TOTP code
  */
-function generateTOTP(secret) {
+function generateTOTP(secret, timeWindowOffset = 0) {
   const crypto = require('crypto')
 
   try {
@@ -153,8 +214,8 @@ function generateTOTP(secret) {
     // Decode base32 secret
     const key = base32ToBytes(secret)
 
-    // Get current time step (30 seconds)
-    const timeStep = Math.floor(Date.now() / 1000 / 30)
+    // Get current time step (30 seconds) with optional offset for clock skew
+    const timeStep = Math.floor(Date.now() / 1000 / 30) + timeWindowOffset
 
     // Create time buffer (8 bytes, big-endian)
     const timeBuffer = Buffer.allocUnsafe(8)
