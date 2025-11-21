@@ -157,7 +157,9 @@ serve(async (req) => {
       insertData.mpin_encrypted = encryptedMpin;
       insertData.totp_secret_encrypted = encryptedTotpSecret;
       // Store IP info for reference (all users use same server IP)
-      insertData.public_ip = publicIp || '98.88.173.81'; // Default to server IP
+      // Public IP should be provided by client or use environment variable
+      // No hardcoded fallback - must be explicitly set
+      insertData.public_ip = publicIp || Deno.env.get('ANGEL_ONE_PUBLIC_IP') || '';
       insertData.local_ip = localIp || null;
       insertData.mac_address = macAddress || null;
     }

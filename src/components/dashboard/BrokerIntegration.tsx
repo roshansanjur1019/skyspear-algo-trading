@@ -167,8 +167,8 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
         requestBody.clientId = credentials.clientId;
         requestBody.mpin = credentials.mpin;
         requestBody.totpSecret = credentials.totpSecret;
-        // Server IP that users need to whitelist
-        requestBody.publicIp = '98.88.173.81';
+        // Server IP is now handled by backend - no need to send from frontend
+        // Backend will use ANGEL_ONE_PUBLIC_IP from environment variables
       }
 
       const { data, error } = await supabase.functions.invoke('store-broker-credentials', {

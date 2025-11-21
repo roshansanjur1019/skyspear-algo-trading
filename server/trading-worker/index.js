@@ -64,8 +64,9 @@ if (SUPABASE_SERVICE_KEY) {
 }
 
 // Server IP that all users must whitelist (same for all users)
-const SERVER_PUBLIC_IP = process.env.ANGEL_ONE_PUBLIC_IP || '98.88.173.81'
-const SERVER_LOCAL_IP = process.env.ANGEL_ONE_LOCAL_IP || '172.31.26.44'
+// These are set via environment variables from GitHub Secrets
+const SERVER_PUBLIC_IP = process.env.ANGEL_ONE_PUBLIC_IP || process.env.SERVER_PUBLIC_IP || '127.0.0.1'
+const SERVER_LOCAL_IP = process.env.ANGEL_ONE_LOCAL_IP || process.env.SERVER_LOCAL_IP || '127.0.0.1'
 const SERVER_MAC_ADDRESS = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
 
 // ===== CREDENTIAL DECRYPTION =====
@@ -1215,8 +1216,8 @@ async function monitorAndExitStrategies({ minProfitPct, breakeven, maxLossPct })
         const clientId = process.env.ANGEL_ONE_CLIENT_ID
         const mpin = process.env.ANGEL_ONE_PASSWORD
         const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-        const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-        const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
+        const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || SERVER_PUBLIC_IP
+        const localIp = process.env.ANGEL_ONE_LOCAL_IP || SERVER_LOCAL_IP
         const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
 
         const auth = await createAuthenticatedClient({

@@ -42,7 +42,18 @@ async function analyzeMarketIntelligenceWithAI() {
  * Enhance market intelligence with AI reasoning
  */
 async function enhanceWithAI(baseIntel) {
-  const { conditions, recommendations, trendAnalysis, events, vixInterpretation } = baseIntel
+  const { 
+    conditions, 
+    recommendations, 
+    trendAnalysis, 
+    events, 
+    vixInterpretation,
+    historicalSummary,
+    usMarketData,
+    usMarketPrediction,
+    gapAnalysis,
+    news
+  } = baseIntel
 
   // Build comprehensive market context for AI
   const marketContext = {
@@ -58,8 +69,18 @@ async function enhanceWithAI(baseIntel) {
 
   // Use Gemini if available, otherwise use advanced rule-based AI
   if (USE_GEMINI) {
-    console.log('[AI MarketIntel] Gemini API key found, using Gemini for enhanced reasoning with context')
-    return await enhanceWithGemini(marketContext, recommendations, events || [], vixInterpretation || null)
+    console.log('[AI MarketIntel] Gemini API key found, using Gemini for comprehensive analysis with historical data, US markets, news, and events')
+    return await enhanceWithGemini(
+      marketContext, 
+      recommendations, 
+      events || [], 
+      vixInterpretation || null,
+      historicalSummary || null,
+      usMarketData || null,
+      usMarketPrediction || null,
+      gapAnalysis || null,
+      news || []
+    )
   } else {
     console.log('[AI MarketIntel] Gemini API key not found, using rule-based AI (set GEMINI_API_KEY to enable Gemini)')
     return await enhanceWithRuleBasedAI(marketContext, recommendations, trendAnalysis, events || [], vixInterpretation || null)
@@ -70,12 +91,12 @@ async function enhanceWithAI(baseIntel) {
  * Enhance with Google Gemini for advanced reasoning
  * Gemini API is free tier friendly and provides excellent reasoning
  */
-async function enhanceWithGemini(marketContext, recommendations, events = [], vixInterpretation = null) {
+async function enhanceWithGemini(marketContext, recommendations, events = [], vixInterpretation = null, historicalSummary = null, usMarketData = null, usMarketPrediction = null, gapAnalysis = null, news = []) {
   try {
-    console.log('[AI MarketIntel] Using Gemini API for enhanced reasoning with context')
+    console.log('[AI MarketIntel] Using Gemini API for comprehensive analysis (historical + US markets + news + events)')
     const fetch = require('node-fetch')
     
-    const prompt = buildAIPrompt(marketContext, recommendations, events, vixInterpretation)
+    const prompt = buildAIPrompt(marketContext, recommendations, events, vixInterpretation, historicalSummary, usMarketData, usMarketPrediction, gapAnalysis, news)
 
     // Use Gemini 1.5 Flash (fast and cost-effective) or Gemini 1.5 Pro (better reasoning)
     const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
@@ -136,33 +157,83 @@ Provide your response as JSON with the following structure:
 /**
  * Build AI prompt for market analysis with context
  */
-function buildAIPrompt(marketContext, recommendations, events = [], vixInterpretation = null) {
+function buildAIPrompt(marketContext, recommendations, events = [], vixInterpretation = null, historicalSummary = null, usMarketData = null, usMarketPrediction = null, gapAnalysis = null, news = []) {
   const eventContext = events.length > 0 
-    ? `\nUpcoming Market Events:\n${events.map(e => `- ${e.name}: ${e.daysUntil} days (${e.impact} impact) - ${e.description}`).join('\n')}`
+    ? `\nUpcoming Market Events:\n${events.map(e => `- ${e.name || e.title}: ${e.daysUntil || 'today'} days (${e.impact || 'medium'} impact) - ${e.description || e.title}`).join('\n')}`
     : '\nNo major events in next 7 days'
 
   const vixContext = vixInterpretation 
     ? `\nVIX Analysis:\n- Level: ${vixInterpretation.level} (${marketContext.vix.toFixed(2)})\n- Trend: ${vixInterpretation.trend} (change: ${vixInterpretation.change > 0 ? '+' : ''}${vixInterpretation.change.toFixed(2)})\n- Meaning: ${vixInterpretation.meaning}\n- Context: ${vixInterpretation.context}\n- Recommendation: ${vixInterpretation.recommendation}`
     : ''
 
-  return `You are an expert algorithmic trading advisor specializing in Indian options markets (NIFTY, BANKNIFTY). Analyze the current market conditions with full context.
+  const historicalContext = historicalSummary && historicalSummary.available
+    ? `\nHistorical Data Analysis (Last ${historicalSummary.totalDays} days):\n- Period: ${historicalSummary.period}\n- 30-Day Momentum: ${historicalSummary.momentum?.avgDailyChange || 'N/A'}% avg change, ${historicalSummary.momentum?.volatility || 'N/A'}% volatility\n- Dominant Trend: ${historicalSummary.momentum?.trendDistribution?.dominant || 'N/A'}\n- VIX Trend: ${historicalSummary.momentum?.vixTrend || 'N/A'} (Range: ${historicalSummary.vixHistory?.min || 'N/A'}-${historicalSummary.vixHistory?.max || 'N/A'}, Current: ${historicalSummary.vixHistory?.current || 'N/A'})\n- Historical Success Rate: ${historicalSummary.successRate ? `${historicalSummary.successRate.successRate}% (${historicalSummary.successRate.successful}/${historicalSummary.successRate.total} trades)` : 'N/A'}\n- Similar Patterns Found: ${historicalSummary.similarPatterns?.length || 0}`
+    : '\nHistorical Data: Not available yet (system learning)'
 
-Market Data:
+  const usMarketContext = usMarketData
+    ? `\nUS Market Data (for Indian market reaction prediction):\n${Object.values(usMarketData).map(m => `- ${m.name}: ${m.price.toFixed(2)} (${m.changePercent > 0 ? '+' : ''}${m.changePercent.toFixed(2)}%)`).join('\n')}`
+    : '\nUS Market Data: Not available'
+
+  const usPredictionContext = usMarketPrediction
+    ? `\nPredicted Indian Market Reaction:\n- Overall Sentiment: ${usMarketPrediction.overallSentiment}\n- Predictions: ${usMarketPrediction.predictions.map(p => `${p.source}: ${p.impact} (${p.strength}) - ${p.reason}`).join('\n')}`
+    : ''
+
+  const gapContext = gapAnalysis
+    ? `\nGap Analysis:\n- Type: ${gapAnalysis.type} (${gapAnalysis.gapPercent > 0 ? '+' : ''}${gapAnalysis.gapPercent.toFixed(2)}%)\n- Magnitude: ${gapAnalysis.magnitude}\n- Interpretation: ${gapAnalysis.interpretation}`
+    : '\nGap Analysis: Not available'
+
+  const newsContext = news.length > 0
+    ? `\nRecent Market News (Top ${Math.min(5, news.length)}):\n${news.slice(0, 5).map((n, i) => `${i + 1}. ${n.title} (${n.source})`).join('\n')}`
+    : '\nMarket News: Not available'
+
+  return `You are an expert algorithmic trading advisor specializing in Indian options markets (NIFTY, BANKNIFTY). Analyze the current market conditions with COMPREHENSIVE context including historical patterns, US market data, news, and events.
+
+CRITICAL: Your analysis must be 99.99% accurate. Consider ALL factors before recommending strategies.
+
+Current Market Data:
 - VIX: ${marketContext.vix.toFixed(2)} (${marketContext.volatilityLevel} volatility)${vixContext}
 - NIFTY: ${marketContext.niftySpot.toFixed(2)} (${marketContext.niftyChangePercent > 0 ? '+' : ''}${marketContext.niftyChangePercent.toFixed(2)}%)
 - Trend: ${marketContext.trend} (${marketContext.trendStrength} strength)
 - Price Position: ${marketContext.technicalIndicators.pricePosition.toFixed(1)}% of daily range
-- Momentum: ${marketContext.technicalIndicators.momentum.toFixed(2)}%${eventContext}
+- Momentum: ${marketContext.technicalIndicators.momentum.toFixed(2)}%${gapContext}${usMarketContext}${usPredictionContext}${newsContext}${historicalContext}${eventContext}
 
 Current Recommendations:
 ${recommendations.map((r, i) => `${i + 1}. ${r.strategy} (${r.confidence} confidence, score: ${r.score})`).join('\n')}
 
-CRITICAL ANALYSIS REQUIRED:
-1. Why is VIX at current level? (Rising VIX in normal conditions = caution mode)
-2. Is VIX rising due to market decline or upcoming event risk?
-3. What does historical data suggest for similar VIX patterns?
-4. Are there upcoming events (budget, expiry) that could cause volatility spikes?
-5. On event days (budget, expiry), market can move 200+ points - should we wait or use defensive strategies?
+COMPREHENSIVE ANALYSIS REQUIRED (99.99% Accuracy Goal):
+
+1. VIX Analysis:
+   - Why is VIX at current level? (Rising VIX in normal conditions = caution mode)
+   - Is VIX rising due to market decline, upcoming event risk, or US market impact?
+   - Compare with historical VIX patterns - what happened in similar situations?
+
+2. Historical Pattern Analysis:
+   - What do similar historical patterns suggest?
+   - What was the success rate in similar conditions?
+   - What strategies worked best in similar VIX/trend combinations?
+
+3. US Market Impact:
+   - How will US market movements affect Indian markets?
+   - Should we wait for market open or position based on US data?
+   - What's the correlation strength?
+
+4. Gap Analysis:
+   - Is there a significant gap? Will it fill or continue?
+   - Historical gap behavior in similar conditions?
+
+5. Event Risk Assessment:
+   - Are there upcoming events (budget, expiry, elections, RBI) that could cause 200+ point moves?
+   - Should we wait, reduce position size, or use defensive strategies?
+   - What happened historically on similar event days?
+
+6. News Impact:
+   - What news items could affect market today?
+   - Are there breaking news that change the analysis?
+
+7. Capital Protection:
+   - Given ALL factors, what's the safest strategy?
+   - Should we wait for better conditions or execute now?
+   - What's the risk-reward ratio considering all factors?
 
 Provide:
 1. Market Outlook (2-3 sentences): Overall sentiment, WHY VIX is at current level, event impact

@@ -3,6 +3,8 @@
 
 const { getMarketData, createAuthenticatedClient } = require('./angelOneSDK')
 const { isMarketOpen, detectMarketEvents, interpretVIX, shouldSkipAssessment } = require('./marketContext')
+const { storeDailySnapshot, getHistoricalSummaryForAI } = require('./historicalData')
+const { getUSMarketData, analyzeGap, getMarketNews, predictIndianMarketReaction, detectEventsFromNews } = require('./marketDataSources')
 
 // Market assessment interval: 15 minutes (optimal balance between accuracy and API rate limits)
 const ASSESSMENT_INTERVAL_MINUTES = 15
@@ -112,6 +114,26 @@ async function analyzeMarketIntelligence() {
     const bankniftySpot = bankniftyData?.ltp || 51200
     const bankniftyChangePercent = bankniftyData?.changePercent || 0
 
+    // Fetch additional market data sources (parallel for speed)
+    const [usMarketResult, newsResult] = await Promise.allSettled([
+      getUSMarketData(),
+      getMarketNews()
+    ])
+
+    const usMarketData = usMarketResult.status === 'fulfilled' ? usMarketResult.value : { success: false }
+    const newsData = newsResult.status === 'fulfilled' ? newsResult.value : { success: false, news: [] }
+
+    // Analyze gap
+    const gapAnalysis = analyzeGap(niftyOpen, niftyClose)
+
+    // Predict Indian market reaction from US markets
+    const usMarketPrediction = usMarketData.success 
+      ? predictIndianMarketReaction(usMarketData.data, { vix, niftySpot, niftyChangePercent })
+      : null
+
+    // Detect events from news
+    const newsEvents = newsData.success ? detectEventsFromNews(newsData.news) : []
+
     // Calculate technical indicators
     const technicalIndicators = calculateTechnicalIndicators({
       current: niftySpot,
@@ -158,20 +180,43 @@ async function analyzeMarketIntelligence() {
     const vixChange = previousVix ? (vix - previousVix) : 0
 
     // Detect market events
-    const events = detectMarketEvents()
+    const calendarEvents = detectMarketEvents()
+    
+    // Combine calendar events with news-detected events
+    const allEvents = [...calendarEvents, ...newsEvents.map(e => ({
+      type: e.type,
+      name: e.title,
+      date: new Date(e.date),
+      daysUntil: Math.ceil((new Date(e.date) - new Date()) / (1000 * 60 * 60 * 24)),
+      impact: 'medium', // News events default to medium
+      description: e.title,
+      source: e.source
+    }))]
     
     // Interpret VIX with context
-    const vixInterpretation = interpretVIX(vix, vixChange, { trend: trendAnalysis.trend }, events)
+    const vixInterpretation = interpretVIX(vix, vixChange, { trend: trendAnalysis.trend }, allEvents)
+
+    // Get historical data summary for AI analysis
+    const historicalSummary = getHistoricalSummaryForAI(365)
+
+    // Store daily snapshot for historical analysis
+    storeDailySnapshot(conditions, recommendations)
 
     const result = {
       conditions: {
         ...conditions,
         vixChange: parseFloat(vixChange.toFixed(2)), // Add VIX change for adaptive scheduling
-        vixInterpretation // Enhanced VIX analysis
+        vixInterpretation, // Enhanced VIX analysis
+        gapAnalysis, // Gap up/down analysis
+        previousClose: niftyClose // For gap calculation
       },
       recommendations,
       trendAnalysis,
-      events, // Upcoming market events
+      events: allEvents, // All market events (calendar + news)
+      usMarketData: usMarketData.success ? usMarketData.data : null,
+      usMarketPrediction, // Predicted Indian market reaction
+      news: newsData.success ? newsData.news.slice(0, 5) : [], // Top 5 news items
+      historicalSummary, // 1 year historical analysis
       assessmentInterval: 'adaptive', // Now uses adaptive 5/10/15 minute intervals
       marketStatus: isMarketOpen()
     }

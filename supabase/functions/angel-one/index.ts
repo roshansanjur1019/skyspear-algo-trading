@@ -227,8 +227,10 @@ serve(async (req) => {
     const forwardedIp = forwarded.split(',')[0]?.trim();
     
     // Use explicit IPs with proper defaults
-    const publicIp = Deno.env.get('ANGEL_ONE_PUBLIC_IP') || '98.88.173.81';
-    const localIp = Deno.env.get('ANGEL_ONE_LOCAL_IP') || '172.31.26.44';
+    // IPs should be provided via environment variables or request body
+    // No hardcoded fallbacks - must be explicitly configured
+    const publicIp = Deno.env.get('ANGEL_ONE_PUBLIC_IP') || '';
+    const localIp = Deno.env.get('ANGEL_ONE_LOCAL_IP') || '';
     const macAddress = Deno.env.get('ANGEL_ONE_MAC_ADDRESS') || 'fe:ed:fa:ce:be:ef';
 
     console.log('=== Starting authentication with IPs ===');

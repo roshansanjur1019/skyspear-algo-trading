@@ -1,4 +1,4 @@
-name: Deploy to AWS Instance
+name: Deploy to GCP Instance
 
 on:
   push:
@@ -12,56 +12,100 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: SSH Deploy
+      - name: SSH Deploy to GCP
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
-            if ! command -v docker >/dev/null 2>&1; then
-              curl -fsSL https://get.docker.com -o /tmp/install-docker.sh
-              sudo sh /tmp/install-docker.sh
+            
+            # Container-Optimized OS already has Docker pre-installed
+            # Verify Docker is running
+            if ! sudo systemctl is-active --quiet docker; then
+              echo "Starting Docker service..."
+              sudo systemctl start docker || true
+              sudo systemctl enable docker || true
             fi
-            sudo systemctl enable --now docker || true
-            if ! docker compose version >/dev/null 2>&1; then
+            
+            # Check if docker compose is available
+            if ! command -v docker-compose >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
+              echo "Installing Docker Compose..."
+              # For Container-Optimized OS, we need to install docker-compose plugin
+              # COS uses read-only root, so we install to /usr/local/lib/docker/cli-plugins
               sudo mkdir -p /usr/local/lib/docker/cli-plugins
               sudo curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
               sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
             fi
+            
+            # Create app directory in /home (writable in COS)
             mkdir -p ~/apps/nifty-stride-trader
             cd ~/apps/nifty-stride-trader
+            
+            # Clone or update repository
             if [ -d .git ]; then
+              echo "Updating existing repository..."
               git fetch --all
               git reset --hard origin/main
             else
+              echo "Cloning repository..."
               git clone https://github.com/roshansanjur1019/nifty-stride-trader.git .
             fi
+            
+            # Create .env.angelone file
             echo "ANGEL_ONE_API_KEY=${{ secrets.ANGEL_ONE_API_KEY }}" > .env.angelone
             echo "ANGEL_ONE_API_SECRET=${{ secrets.ANGEL_ONE_API_SECRET }}" >> .env.angelone
             echo "ANGEL_ONE_CLIENT_ID=${{ secrets.ANGEL_ONE_CLIENT_ID }}" >> .env.angelone
             echo "ANGEL_ONE_PASSWORD=${{ secrets.ANGEL_ONE_PASSWORD }}" >> .env.angelone
             echo "ANGEL_ONE_TOTP_SECRET=${{ secrets.ANGEL_ONE_TOTP_SECRET }}" >> .env.angelone
-            if [ -n "${{ secrets.ANGEL_ONE_PUBLIC_IP }}" ]; then echo "ANGEL_ONE_PUBLIC_IP=${{ secrets.ANGEL_ONE_PUBLIC_IP }}" >> .env.angelone; fi
-            if [ -n "${{ secrets.ANGEL_ONE_LOCAL_IP }}" ]; then echo "ANGEL_ONE_LOCAL_IP=${{ secrets.ANGEL_ONE_LOCAL_IP }}" >> .env.angelone; fi
-            if [ -n "${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" ]; then echo "ANGEL_ONE_MAC_ADDRESS=${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" >> .env.angelone; fi
+            if [ -n "${{ secrets.ANGEL_ONE_PUBLIC_IP }}" ]; then 
+              echo "ANGEL_ONE_PUBLIC_IP=${{ secrets.ANGEL_ONE_PUBLIC_IP }}" >> .env.angelone
+            fi
+            if [ -n "${{ secrets.ANGEL_ONE_LOCAL_IP }}" ]; then 
+              echo "ANGEL_ONE_LOCAL_IP=${{ secrets.ANGEL_ONE_LOCAL_IP }}" >> .env.angelone
+            fi
+            if [ -n "${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" ]; then 
+              echo "ANGEL_ONE_MAC_ADDRESS=${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" >> .env.angelone
+            fi
+            
+            # Create .env.hosting file
             echo "DOMAIN=${{ secrets.DOMAIN }}" > .env.hosting
             echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.hosting
             echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env.hosting
             echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.hosting
             echo "SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}" >> .env.hosting
-            # Clean up Docker to free disk space
+            if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then 
+              echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.hosting
+            fi
+            
+            # Clean up Docker to free disk space (important for COS)
             echo "Cleaning up Docker to free disk space..."
             sudo docker system prune -af --volumes || true
             sudo docker builder prune -af || true
+            
             # Check disk space
+            echo "Disk space check:"
             df -h
+            
             # Stop and remove trading-worker container to force recreation
+            echo "Stopping existing containers..."
             sudo docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
             sudo docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
+            
             # Build all services
+            echo "Building Docker images..."
             sudo docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
+            
             # Start all services (trading-worker will be recreated)
+            echo "Starting all services..."
             sudo docker compose --env-file .env.angelone --env-file .env.hosting up -d
+            
+            # Verify containers are running
+            echo "Container status:"
+            sudo docker compose --env-file .env.angelone --env-file .env.hosting ps
+            
+            # Show recent logs
+            echo "Recent logs from trading-worker:"
+            sudo docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=50 trading-worker || true
