@@ -14,5 +14,5 @@
     "node-fetch": "^2.7.0",
     "smartapi-javascript": "^1.0.27",
     "ws": "^8.18.0"
-  }
+  },
 }

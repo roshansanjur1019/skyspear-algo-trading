@@ -445,75 +445,139 @@ function base32ToBytes (base32) {
 // This uses loginByPassword (recommended by Angel One) instead of loginByMpin
 
 // ===== MARKET INTELLIGENCE MODULE =====
-async function analyzeMarketIntelligence() {
-  try {
-    // Use platform credentials for market intelligence
-    const apiKey = process.env.ANGEL_ONE_API_KEY
-    const clientId = process.env.ANGEL_ONE_CLIENT_ID
-    const password = process.env.ANGEL_ONE_PASSWORD
-    const mpin = process.env.ANGEL_ONE_PASSWORD // Fallback
-    const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
+// Enhanced market intelligence with AI-powered recommendations
+// Imported from dedicated module for better organization
+const { analyzeMarketIntelligence, ASSESSMENT_INTERVAL_MINUTES } = require('./marketIntelligence')
+const { analyzeMarketIntelligenceWithAI, analyzeHistoricalPatterns } = require('./aiMarketIntelligence')
 
-    if (!apiKey || !clientId || !totpSecret || (!password && !mpin)) {
-      return { conditions: null, recommendations: [], error: 'Missing Angel One credentials' }
+/**
+ * Execute market intelligence-driven strategies
+ * This function checks recommendations, verifies capital, and executes strategies
+ */
+async function executeMarketIntelligenceStrategies(userId, userConfigs, marketIntel) {
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not available')
     }
 
-    // Use SDK wrapper for authentication
+    // Get user's available funds
+    const userCredentials = await getUserBrokerCredentials(userId, 'angel_one')
     const auth = await createAuthenticatedClient({
-      apiKey,
-      clientId,
-      password: password || mpin,
-      mpin: mpin,
-      totpSecret
+      apiKey: userCredentials.apiKey,
+      clientId: userCredentials.clientId,
+      password: userCredentials.password || userCredentials.mpin,
+      mpin: userCredentials.mpin,
+      totpSecret: userCredentials.totpSecret
     })
 
     if (!auth.success || !auth.client) {
-      return { conditions: null, recommendations: [], error: auth.error || 'Authentication failed' }
+      console.error(`[MarketIntel] Authentication failed for user ${userId}`)
+      return
     }
 
-    // Use SDK wrapper for market data
-    const marketDataResult = await getMarketData(auth.client, {
-      mode: 'LTP',
-      exchangeTokens: {
-        NSE: ['99926000', '99926017'] // NIFTY and VIX
+    const fundsResult = await getBrokerFunds(auth.client)
+    if (!fundsResult.success) {
+      console.error(`[MarketIntel] Failed to fetch funds for user ${userId}`)
+      return
+    }
+
+    const availableFunds = fundsResult.availableFunds || 0
+
+    // Check for existing execution runs today (avoid duplicates)
+    const today = new Date().toISOString().split('T')[0]
+    const { data: existingRuns } = await supabase
+      .from('execution_runs')
+      .select('strategy_config_id, status')
+      .eq('user_id', userId)
+      .eq('date', today)
+      .in('status', ['planned', 'running'])
+
+    const activeConfigIds = new Set((existingRuns || []).map(r => r.strategy_config_id))
+
+    // Process each recommendation
+    for (const recommendation of marketIntel.recommendations || []) {
+      // Only execute high-confidence recommendations
+      if (recommendation.confidence !== 'high' && recommendation.score < 50) {
+        continue
       }
-    })
 
-    if (!marketDataResult.success) {
-      return { conditions: null, recommendations: [], error: marketDataResult.error }
+      // Find matching user strategy config
+      const matchingConfig = userConfigs.find(
+        config => config.strategy_name === recommendation.strategy
+      )
+
+      if (!matchingConfig) {
+        continue // User doesn't have this strategy configured
+      }
+
+      // Skip if already running today
+      if (activeConfigIds.has(matchingConfig.id)) {
+        console.log(`[MarketIntel] Strategy ${recommendation.strategy} already running for user ${userId}`)
+        continue
+      }
+
+      // Check capital availability
+      const requiredCapital = matchingConfig.allocated_capital || 
+                             (availableFunds * (matchingConfig.per_trade_capital_pct || 0.25) / 100)
+
+      if (availableFunds < requiredCapital) {
+        console.log(`[MarketIntel] Insufficient funds for ${recommendation.strategy}. Required: ${requiredCapital}, Available: ${availableFunds}`)
+        continue
+      }
+
+      // Check if strategy type matches recommendation
+      const strategyType = matchingConfig.strategy_type || 'selling'
+      const isSellingStrategy = ['Short Strangle', 'Iron Condor', 'Short Straddle', 'Bull Put Spread', 'Covered Call'].includes(recommendation.strategy)
+      
+      if ((strategyType === 'selling' && !isSellingStrategy) || 
+          (strategyType === 'buying' && isSellingStrategy)) {
+        continue // Strategy type mismatch
+      }
+
+      console.log(`[MarketIntel] Executing ${recommendation.strategy} for user ${userId} (confidence: ${recommendation.confidence}, score: ${recommendation.score})`)
+
+      // Create execution run
+      const { data: executionRun, error: runError } = await supabase
+        .from('execution_runs')
+        .insert({
+          user_id: userId,
+          strategy_config_id: matchingConfig.id,
+          date: today,
+          status: 'planned',
+          reason: `Market intelligence recommendation: ${recommendation.reason}`,
+          allocated_capital: requiredCapital,
+          vix_at_entry: marketIntel.conditions?.vix,
+          nifty_spot_at_entry: marketIntel.conditions?.niftySpot
+        })
+        .select()
+        .single()
+
+      if (runError || !executionRun) {
+        console.error(`[MarketIntel] Failed to create execution run:`, runError)
+        continue
+      }
+
+      // Execute based on strategy type
+      // Note: Short Strangle has fixed timing (3:10 PM), so we skip it here
+      // Other strategies can be executed based on market intelligence
+      if (recommendation.strategy === 'Short Strangle') {
+        console.log(`[MarketIntel] Short Strangle has fixed timing - skipping market intelligence execution`)
+        await supabase
+          .from('execution_runs')
+          .update({ status: 'stopped', reason: 'Short Strangle uses fixed timing (3:10 PM), not market intelligence' })
+          .eq('id', executionRun.id)
+      } else {
+        // For other strategies, mark as planned for now
+        // TODO: Implement execution functions for Iron Condor, Long Straddle, etc.
+        console.log(`[MarketIntel] Strategy ${recommendation.strategy} execution pending implementation`)
+        await supabase
+          .from('execution_runs')
+          .update({ status: 'planned', reason: `Market intelligence recommendation (${recommendation.confidence} confidence, score: ${recommendation.score})` })
+          .eq('id', executionRun.id)
+      }
     }
-
-    const marketData = marketDataResult.data
-    const vixData = marketData?.fetched?.find(d => d.symbolToken === '99926017')
-    const niftyData = marketData?.fetched?.find(d => d.symbolToken === '99926000')
-    const vix = vixData?.ltp || 15
-    const niftySpot = niftyData?.ltp || 24750
-
-    const conditions = {
-      vix,
-      niftySpot,
-      trend: vix > 20 ? 'volatile' : vix < 15 ? 'stable' : 'normal',
-      volatilityLevel: vix > 20 ? 'high' : vix < 15 ? 'low' : 'medium'
-    }
-
-    // Suggest strategies based on market intelligence
-    const recommendations = []
-    
-    if (vix > 20) {
-      recommendations.push({ strategy: 'Iron Condor', confidence: 'high', reason: 'High VIX favors premium collection' })
-      recommendations.push({ strategy: 'Short Strangle', confidence: 'high', reason: 'High volatility premium' })
-    } else if (vix < 15) {
-      recommendations.push({ strategy: 'Long Straddle', confidence: 'medium', reason: 'Low VIX, potential breakout' })
-      recommendations.push({ strategy: 'Bull Call Spread', confidence: 'medium', reason: 'Low volatility, bullish bias' })
-    } else {
-      recommendations.push({ strategy: 'Short Strangle', confidence: 'medium', reason: 'Normal volatility, range-bound' })
-      recommendations.push({ strategy: 'Iron Condor', confidence: 'medium', reason: 'Stable premium collection' })
-    }
-
-    return { conditions, recommendations }
   } catch (error) {
-    console.error('Market intelligence analysis error:', error)
-    return { conditions: null, recommendations: [], error: error.message }
+    console.error(`[MarketIntel] Error executing strategies for user ${userId}:`, error)
   }
 }
 
@@ -1355,8 +1419,16 @@ app.post('/', async (req, res) => {
 
   if (action === 'getMarketIntelligence') {
     try {
-      const marketIntel = await analyzeMarketIntelligence()
-      return res.json({ success: true, ...marketIntel })
+      // Use AI-enhanced market intelligence
+      const marketIntel = await analyzeMarketIntelligenceWithAI()
+      return res.json({ 
+        success: true, 
+        ...marketIntel,
+        assessmentInterval: 'adaptive', // 5/10/15 minutes based on conditions
+        nextAssessment: new Date(Date.now() + (ASSESSMENT_INTERVAL_MINUTES * 60 * 1000)).toISOString(),
+        aiEnabled: !!process.env.GEMINI_API_KEY,
+        schedulerStatus: require('./adaptiveScheduler').getSchedulerStatus()
+      })
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message })
     }
@@ -1570,34 +1642,143 @@ try {
     }
   })
 
-  // Market intelligence-driven execution (runs every hour during market hours)
-  cron.schedule('0 9-15 * * *', async () => {
-    console.log('[Scheduler] Market intelligence check for strategy suggestions')
+  // Market intelligence-driven execution (ADAPTIVE: 5/10/15 minutes based on conditions)
+  // Uses adaptive scheduler instead of fixed cron
+  // Base: 15 min | Active positions: 10 min | High volatility: 5 min
+  const { startAdaptiveScheduler, updateActivePositions } = require('./adaptiveScheduler')
+  
+  // Start adaptive scheduler for market intelligence
+  const adaptiveSchedulerCleanup = startAdaptiveScheduler(
+    async () => {
+    console.log('[Scheduler] Market intelligence assessment (15-minute interval)')
     try {
-      if (!supabase) return
+      if (!supabase) {
+        console.log('[Scheduler] Supabase client not available - skipping market intelligence')
+        return
+      }
 
-      const marketIntel = await analyzeMarketIntelligence()
-      if (!marketIntel.recommendations || marketIntel.recommendations.length === 0) return
+      // Get AI-enhanced market intelligence
+      const marketIntel = await analyzeMarketIntelligenceWithAI()
+      if (!marketIntel || !marketIntel.recommendations || marketIntel.recommendations.length === 0) {
+        console.log('[Scheduler] No market intelligence recommendations available')
+        return
+      }
 
-      // Get users with auto-execute enabled
-      const { data: users } = await supabase
+      console.log('[Scheduler] Market intelligence:', {
+        trend: marketIntel.conditions?.trend,
+        vix: marketIntel.conditions?.vix?.toFixed(2),
+        recommendations: marketIntel.recommendations.length
+      })
+
+      // Get users with auto-execute enabled for market intelligence-driven strategies
+      const { data: strategyConfigs, error } = await supabase
         .from('strategy_configs')
-        .select('user_id, strategy_name, auto_execute_enabled, allocated_capital')
+        .select('*, user_id')
         .eq('auto_execute_enabled', true)
         .eq('is_active', true)
+        .neq('strategy_name', 'Short Strangle') // Exclude fixed-timing strategies
 
-      if (!users || users.length === 0) return
+      if (error) {
+        console.error('[Scheduler] Error fetching strategy configs:', error)
+        return
+      }
 
-      // Check available capital and execute recommended strategies
-      for (const user of users) {
-        // Check if user has available capital for recommended strategies
-        // TODO: Implement market intelligence-driven execution
-        // This would check recommendations, verify capital, and execute
+      if (!strategyConfigs || strategyConfigs.length === 0) {
+        console.log('[Scheduler] No users with market intelligence-driven auto-execute enabled')
+        return
+      }
+
+      // Group by user to check capital once per user
+      const usersMap = new Map()
+      for (const config of strategyConfigs) {
+        if (!usersMap.has(config.user_id)) {
+          usersMap.set(config.user_id, [])
+        }
+        usersMap.get(config.user_id).push(config)
+      }
+
+      // Process each user
+      for (const [userId, userConfigs] of usersMap.entries()) {
+        try {
+          await executeMarketIntelligenceStrategies(userId, userConfigs, marketIntel)
+        } catch (error) {
+          console.error(`[Scheduler] Error processing user ${userId}:`, error)
+        }
       }
     } catch (error) {
       console.error('[Scheduler] Market intelligence execution error:', error)
     }
   })
+
+  // Market intelligence assessment function (used by adaptive scheduler)
+  async function runMarketIntelligenceAssessment() {
+    try {
+      console.log('[Scheduler] Adaptive market intelligence assessment')
+      if (!supabase) {
+        console.log('[Scheduler] Supabase client not available - skipping market intelligence')
+        return
+      }
+
+      // Get AI-enhanced market intelligence
+      const marketIntel = await analyzeMarketIntelligenceWithAI()
+      if (!marketIntel || !marketIntel.recommendations || marketIntel.recommendations.length === 0) {
+        console.log('[Scheduler] No market intelligence recommendations available')
+        return
+      }
+
+      console.log('[Scheduler] Market intelligence:', {
+        trend: marketIntel.conditions?.trend,
+        vix: marketIntel.conditions?.vix?.toFixed(2),
+        recommendations: marketIntel.recommendations.length,
+        interval: 'adaptive' // Will be logged by adaptive scheduler
+      })
+
+      // Get users with auto-execute enabled for market intelligence-driven strategies
+      const { data: strategyConfigs, error } = await supabase
+        .from('strategy_configs')
+        .select('*, user_id')
+        .eq('auto_execute_enabled', true)
+        .eq('is_active', true)
+        .neq('strategy_name', 'Short Strangle') // Exclude fixed-timing strategies
+
+      if (error) {
+        console.error('[Scheduler] Error fetching strategy configs:', error)
+        return
+      }
+
+      if (!strategyConfigs || strategyConfigs.length === 0) {
+        console.log('[Scheduler] No users with market intelligence-driven auto-execute enabled')
+        return
+      }
+
+      // Update active positions count for adaptive scheduler
+      const { data: activeRuns } = await supabase
+        .from('execution_runs')
+        .select('id')
+        .eq('status', 'running')
+      updateActivePositions(activeRuns?.length || 0)
+
+      // Group by user to check capital once per user
+      const usersMap = new Map()
+      for (const config of strategyConfigs) {
+        if (!usersMap.has(config.user_id)) {
+          usersMap.set(config.user_id, [])
+        }
+        usersMap.get(config.user_id).push(config)
+      }
+
+      // Process each user
+      for (const [userId, userConfigs] of usersMap.entries()) {
+        try {
+          await executeMarketIntelligenceStrategies(userId, userConfigs, marketIntel)
+        } catch (error) {
+          console.error(`[Scheduler] Error processing user ${userId}:`, error)
+        }
+      }
+    } catch (error) {
+      console.error('[Scheduler] Market intelligence assessment error:', error)
+    }
+  }
 
   cron.schedule('30 14 * * *', async () => {
     if (!supabase) return
