@@ -44,7 +44,24 @@ app.use(bodyParser.json())
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://blnphqmmsjlxlqnrmriw.supabase.co'
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || ''
-const supabase = SUPABASE_SERVICE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY) : null
+
+// Initialize Supabase client
+let supabase = null
+if (SUPABASE_SERVICE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  console.log('[Supabase] Client initialized successfully')
+  console.log('[Supabase] URL:', SUPABASE_URL)
+  console.log('[Supabase] Service key present:', SUPABASE_SERVICE_KEY ? 'Yes (hidden)' : 'No')
+} else {
+  console.error('[Supabase] ERROR: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY not set!')
+  console.error('[Supabase] Available env vars:', {
+    SUPABASE_URL: SUPABASE_URL ? 'Set' : 'Not set',
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Not set',
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? 'Set' : 'Not set',
+    SUPABASE_JWT_SECRET: SUPABASE_JWT_SECRET ? 'Set' : 'Not set'
+  })
+  console.error('[Supabase] Supabase client will not be available. Please set SUPABASE_SERVICE_ROLE_KEY in environment variables.')
+}
 
 // Server IP that all users must whitelist (same for all users)
 const SERVER_PUBLIC_IP = process.env.ANGEL_ONE_PUBLIC_IP || '98.88.173.81'
@@ -174,7 +191,11 @@ app.post('/getBrokerFunds', async (req, res) => {
 
   try {
     if (!supabase) {
-      return res.status(500).json({ success: false, error: 'Supabase client not available' })
+      console.error('[getBrokerFunds] Supabase client not initialized. Check SUPABASE_SERVICE_ROLE_KEY environment variable.')
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Supabase client not available. Please configure SUPABASE_SERVICE_ROLE_KEY environment variable.' 
+      })
     }
 
     // Get broker type from brokerId if provided, otherwise default to angel_one
