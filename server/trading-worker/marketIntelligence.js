@@ -2,6 +2,7 @@
 // Analyzes market conditions, trends, and recommends optimal strategies
 
 const { getMarketData, createAuthenticatedClient } = require('./angelOneSDK')
+const { isMarketOpen, detectMarketEvents, interpretVIX, shouldSkipAssessment } = require('./marketContext')
 
 // Market assessment interval: 15 minutes (optimal balance between accuracy and API rate limits)
 const ASSESSMENT_INTERVAL_MINUTES = 15
@@ -19,6 +20,30 @@ let marketIntelligenceCache = {
  */
 async function analyzeMarketIntelligence() {
   try {
+    // Check if market is open - skip assessment if closed
+    const skipCheck = shouldSkipAssessment()
+    if (skipCheck.skip) {
+      console.log(`[MarketIntel] Skipping assessment - ${skipCheck.reason}`)
+      if (skipCheck.nextOpenTime) {
+        console.log(`[MarketIntel] Next market open: ${skipCheck.nextOpenTime.toISOString()}`)
+      }
+      // Return cached data if available, or return market closed status
+      if (marketIntelligenceCache.data) {
+        return {
+          ...marketIntelligenceCache.data,
+          marketClosed: true,
+          nextOpenTime: skipCheck.nextOpenTime?.toISOString()
+        }
+      }
+      return {
+        conditions: null,
+        recommendations: [],
+        error: `Market is closed: ${skipCheck.reason}`,
+        marketClosed: true,
+        nextOpenTime: skipCheck.nextOpenTime?.toISOString()
+      }
+    }
+
     // Check cache first
     if (marketIntelligenceCache.data && marketIntelligenceCache.timestamp) {
       const age = Date.now() - marketIntelligenceCache.timestamp
@@ -132,14 +157,23 @@ async function analyzeMarketIntelligence() {
     const previousVix = marketIntelligenceCache.data?.conditions?.vix
     const vixChange = previousVix ? (vix - previousVix) : 0
 
+    // Detect market events
+    const events = detectMarketEvents()
+    
+    // Interpret VIX with context
+    const vixInterpretation = interpretVIX(vix, vixChange, { trend: trendAnalysis.trend }, events)
+
     const result = {
       conditions: {
         ...conditions,
-        vixChange: parseFloat(vixChange.toFixed(2)) // Add VIX change for adaptive scheduling
+        vixChange: parseFloat(vixChange.toFixed(2)), // Add VIX change for adaptive scheduling
+        vixInterpretation // Enhanced VIX analysis
       },
       recommendations,
       trendAnalysis,
-      assessmentInterval: 'adaptive' // Now uses adaptive 5/10/15 minute intervals
+      events, // Upcoming market events
+      assessmentInterval: 'adaptive', // Now uses adaptive 5/10/15 minute intervals
+      marketStatus: isMarketOpen()
     }
 
     // Cache the result
@@ -239,30 +273,46 @@ function analyzeTrend(data) {
   let strength = 'weak'
   let sentiment = 'neutral'
 
-  // Bullish indicators
+  // Bullish indicators (more sensitive thresholds)
   const bullishSignals = []
-  if (niftyChangePercent > 0.3) bullishSignals.push('nifty_up')
-  if (bankniftyChangePercent > 0.3) bullishSignals.push('banknifty_up')
-  if (technicalIndicators.momentum > 0.5) bullishSignals.push('momentum_positive')
+  if (niftyChangePercent > 0.2) bullishSignals.push('nifty_up') // Lowered from 0.3 to 0.2
+  if (bankniftyChangePercent > 0.2) bullishSignals.push('banknifty_up')
+  if (technicalIndicators.momentum > 0.3) bullishSignals.push('momentum_positive') // Lowered from 0.5
   if (vix < 15) bullishSignals.push('low_volatility')
 
-  // Bearish indicators
+  // Bearish indicators (more sensitive thresholds)
   const bearishSignals = []
-  if (niftyChangePercent < -0.3) bearishSignals.push('nifty_down')
-  if (bankniftyChangePercent < -0.3) bearishSignals.push('banknifty_down')
-  if (technicalIndicators.momentum < -0.5) bearishSignals.push('momentum_negative')
+  if (niftyChangePercent < -0.2) bearishSignals.push('nifty_down') // Lowered from -0.3 to -0.2
+  if (bankniftyChangePercent < -0.2) bearishSignals.push('banknifty_down')
+  if (technicalIndicators.momentum < -0.3) bearishSignals.push('momentum_negative') // Lowered from -0.5
   if (vix > 20) bearishSignals.push('high_volatility')
 
-  // Determine trend
-  if (bullishSignals.length > bearishSignals.length && bullishSignals.length >= 2) {
+  // Determine trend (improved logic - prioritize price movement)
+  // If price movement is significant (>0.4%), it takes precedence
+  const significantMove = Math.abs(niftyChangePercent) > 0.4
+  
+  if (significantMove && niftyChangePercent > 0) {
+    // Significant upward move
     trend = 'bullish'
-    strength = bullishSignals.length >= 3 ? 'strong' : 'moderate'
+    strength = niftyChangePercent > 0.6 ? 'strong' : 'moderate'
     sentiment = 'positive'
-  } else if (bearishSignals.length > bullishSignals.length && bearishSignals.length >= 2) {
+  } else if (significantMove && niftyChangePercent < 0) {
+    // Significant downward move
     trend = 'bearish'
-    strength = bearishSignals.length >= 3 ? 'strong' : 'moderate'
+    strength = niftyChangePercent < -0.6 ? 'strong' : 'moderate'
+    sentiment = 'negative'
+  } else if (bullishSignals.length > bearishSignals.length && bullishSignals.length >= 1) {
+    // Multiple bullish signals
+    trend = 'bullish'
+    strength = bullishSignals.length >= 2 ? 'moderate' : 'weak'
+    sentiment = 'positive'
+  } else if (bearishSignals.length > bullishSignals.length && bearishSignals.length >= 1) {
+    // Multiple bearish signals
+    trend = 'bearish'
+    strength = bearishSignals.length >= 2 ? 'moderate' : 'weak'
     sentiment = 'negative'
   } else {
+    // Default to sideways only if no clear direction
     trend = 'sideways'
     strength = 'weak'
     sentiment = 'neutral'

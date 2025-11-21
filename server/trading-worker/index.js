@@ -1647,69 +1647,6 @@ try {
   // Base: 15 min | Active positions: 10 min | High volatility: 5 min
   const { startAdaptiveScheduler, updateActivePositions } = require('./adaptiveScheduler')
   
-  // Start adaptive scheduler for market intelligence
-  const adaptiveSchedulerCleanup = startAdaptiveScheduler(
-    async () => {
-    console.log('[Scheduler] Market intelligence assessment (15-minute interval)')
-    try {
-      if (!supabase) {
-        console.log('[Scheduler] Supabase client not available - skipping market intelligence')
-        return
-      }
-
-      // Get AI-enhanced market intelligence
-      const marketIntel = await analyzeMarketIntelligenceWithAI()
-      if (!marketIntel || !marketIntel.recommendations || marketIntel.recommendations.length === 0) {
-        console.log('[Scheduler] No market intelligence recommendations available')
-        return
-      }
-
-      console.log('[Scheduler] Market intelligence:', {
-        trend: marketIntel.conditions?.trend,
-        vix: marketIntel.conditions?.vix?.toFixed(2),
-        recommendations: marketIntel.recommendations.length
-      })
-
-      // Get users with auto-execute enabled for market intelligence-driven strategies
-      const { data: strategyConfigs, error } = await supabase
-        .from('strategy_configs')
-        .select('*, user_id')
-        .eq('auto_execute_enabled', true)
-        .eq('is_active', true)
-        .neq('strategy_name', 'Short Strangle') // Exclude fixed-timing strategies
-
-      if (error) {
-        console.error('[Scheduler] Error fetching strategy configs:', error)
-        return
-      }
-
-      if (!strategyConfigs || strategyConfigs.length === 0) {
-        console.log('[Scheduler] No users with market intelligence-driven auto-execute enabled')
-        return
-      }
-
-      // Group by user to check capital once per user
-      const usersMap = new Map()
-      for (const config of strategyConfigs) {
-        if (!usersMap.has(config.user_id)) {
-          usersMap.set(config.user_id, [])
-        }
-        usersMap.get(config.user_id).push(config)
-      }
-
-      // Process each user
-      for (const [userId, userConfigs] of usersMap.entries()) {
-        try {
-          await executeMarketIntelligenceStrategies(userId, userConfigs, marketIntel)
-        } catch (error) {
-          console.error(`[Scheduler] Error processing user ${userId}:`, error)
-        }
-      }
-    } catch (error) {
-      console.error('[Scheduler] Market intelligence execution error:', error)
-    }
-  })
-
   // Market intelligence assessment function (used by adaptive scheduler)
   async function runMarketIntelligenceAssessment() {
     try {
@@ -1729,8 +1666,9 @@ try {
       console.log('[Scheduler] Market intelligence:', {
         trend: marketIntel.conditions?.trend,
         vix: marketIntel.conditions?.vix?.toFixed(2),
-        recommendations: marketIntel.recommendations.length,
-        interval: 'adaptive' // Will be logged by adaptive scheduler
+        vixInterpretation: marketIntel.conditions?.vixInterpretation?.meaning,
+        events: marketIntel.events?.length || 0,
+        recommendations: marketIntel.recommendations.length
       })
 
       // Get users with auto-execute enabled for market intelligence-driven strategies
@@ -1779,6 +1717,34 @@ try {
       console.error('[Scheduler] Market intelligence assessment error:', error)
     }
   }
+
+  // Start adaptive scheduler for market intelligence
+  try {
+    const adaptiveSchedulerCleanup = startAdaptiveScheduler(
+      runMarketIntelligenceAssessment,
+      async () => {
+        // Get market conditions callback
+        const intel = await analyzeMarketIntelligenceWithAI()
+        return intel?.conditions || null
+      },
+      async () => {
+        // Get active positions callback
+        if (!supabase) return false
+        const { data: activeRuns } = await supabase
+          .from('execution_runs')
+          .select('id')
+          .eq('status', 'running')
+          .limit(1)
+        return (activeRuns?.length || 0) > 0
+      }
+    )
+    console.log('[Scheduler] Adaptive market intelligence scheduler started')
+  } catch (error) {
+    console.error('[Scheduler] Failed to start adaptive scheduler, using fallback:', error)
+    // Fallback to fixed 15-minute interval if adaptive scheduler fails
+    cron.schedule('*/15 9-15 * * *', runMarketIntelligenceAssessment)
+  }
+
 
   cron.schedule('30 14 * * *', async () => {
     if (!supabase) return

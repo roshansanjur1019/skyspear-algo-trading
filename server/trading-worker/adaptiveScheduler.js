@@ -3,6 +3,7 @@
 // Base: 15 min | Active positions: 10 min | High volatility: 5 min
 
 const cron = require('node-cron')
+const { isMarketOpen, shouldSkipAssessment } = require('./marketContext')
 
 // Assessment interval states
 const INTERVALS = {
@@ -142,6 +143,22 @@ function startAdaptiveScheduler(assessmentCallback, getMarketConditions, getActi
   // Initial assessment
   const runAssessment = async () => {
     try {
+      // Check if market is open - skip if closed
+      const skipCheck = shouldSkipAssessment()
+      if (skipCheck.skip) {
+        console.log(`[AdaptiveScheduler] Market closed - ${skipCheck.reason}`)
+        if (skipCheck.nextOpenTime) {
+          const msUntilOpen = skipCheck.nextOpenTime.getTime() - Date.now()
+          console.log(`[AdaptiveScheduler] Next assessment at market open: ${skipCheck.nextOpenTime.toISOString()}`)
+          // Schedule next assessment at market open
+          setTimeout(runAssessment, msUntilOpen)
+        } else {
+          // Schedule check for next day
+          setTimeout(runAssessment, 60 * 60 * 1000) // Check every hour
+        }
+        return
+      }
+
       // Get current market conditions
       const conditions = await getMarketConditions()
       const hasActivePositions = await getActivePositions()

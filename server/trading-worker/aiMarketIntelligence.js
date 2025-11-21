@@ -42,7 +42,7 @@ async function analyzeMarketIntelligenceWithAI() {
  * Enhance market intelligence with AI reasoning
  */
 async function enhanceWithAI(baseIntel) {
-  const { conditions, recommendations, trendAnalysis } = baseIntel
+  const { conditions, recommendations, trendAnalysis, events, vixInterpretation } = baseIntel
 
   // Build comprehensive market context for AI
   const marketContext = {
@@ -58,9 +58,11 @@ async function enhanceWithAI(baseIntel) {
 
   // Use Gemini if available, otherwise use advanced rule-based AI
   if (USE_GEMINI) {
-    return await enhanceWithGemini(marketContext, recommendations)
+    console.log('[AI MarketIntel] Gemini API key found, using Gemini for enhanced reasoning with context')
+    return await enhanceWithGemini(marketContext, recommendations, events || [], vixInterpretation || null)
   } else {
-    return await enhanceWithRuleBasedAI(marketContext, recommendations, trendAnalysis)
+    console.log('[AI MarketIntel] Gemini API key not found, using rule-based AI (set GEMINI_API_KEY to enable Gemini)')
+    return await enhanceWithRuleBasedAI(marketContext, recommendations, trendAnalysis, events || [], vixInterpretation || null)
   }
 }
 
@@ -68,11 +70,12 @@ async function enhanceWithAI(baseIntel) {
  * Enhance with Google Gemini for advanced reasoning
  * Gemini API is free tier friendly and provides excellent reasoning
  */
-async function enhanceWithGemini(marketContext, recommendations) {
+async function enhanceWithGemini(marketContext, recommendations, events = [], vixInterpretation = null) {
   try {
+    console.log('[AI MarketIntel] Using Gemini API for enhanced reasoning with context')
     const fetch = require('node-fetch')
     
-    const prompt = buildAIPrompt(marketContext, recommendations)
+    const prompt = buildAIPrompt(marketContext, recommendations, events, vixInterpretation)
 
     // Use Gemini 1.5 Flash (fast and cost-effective) or Gemini 1.5 Pro (better reasoning)
     const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
@@ -92,10 +95,12 @@ ${prompt}
 
 Provide your response as JSON with the following structure:
 {
-  "marketOutlook": "1-2 sentence market sentiment",
-  "riskAssessment": "low/medium/medium-high/high with brief reason",
+  "marketOutlook": "2-3 sentence market sentiment including VIX interpretation and event context",
+  "riskAssessment": "low/medium/medium-high/high with specific reasons",
   "topStrategy": "strategy name",
-  "insights": ["insight 1", "insight 2", "insight 3"]
+  "insights": ["insight 1 about VIX", "insight 2 about events", "insight 3 about strategy", "insight 4 about risk"],
+  "vixAnalysis": "Why VIX is at current level and what it means",
+  "eventRisk": "Assessment of upcoming events and their impact"
 }`
           }]
         }],
@@ -111,46 +116,72 @@ Provide your response as JSON with the following structure:
     
     if (data.candidates && data.candidates[0] && data.candidates[0].content) {
       const aiResponse = data.candidates[0].content.parts[0].text
+      console.log('[AI MarketIntel] Gemini response received successfully')
       return parseAIResponse(aiResponse, marketContext, recommendations)
     }
 
+    console.warn('[AI MarketIntel] Gemini response format unexpected, falling back to rule-based AI')
     // Fallback to rule-based if Gemini fails
     return await enhanceWithRuleBasedAI(marketContext, recommendations, {})
   } catch (error) {
-    console.error('[AI MarketIntel] Gemini error:', error.message)
+    console.error('[AI MarketIntel] Gemini API error:', error.message)
+    if (error.response) {
+      console.error('[AI MarketIntel] Gemini API response:', error.response)
+    }
     // Fallback to rule-based AI
     return await enhanceWithRuleBasedAI(marketContext, recommendations, {})
   }
 }
 
 /**
- * Build AI prompt for market analysis
+ * Build AI prompt for market analysis with context
  */
-function buildAIPrompt(marketContext, recommendations) {
-  return `Analyze the current Indian options market conditions and provide trading insights:
+function buildAIPrompt(marketContext, recommendations, events = [], vixInterpretation = null) {
+  const eventContext = events.length > 0 
+    ? `\nUpcoming Market Events:\n${events.map(e => `- ${e.name}: ${e.daysUntil} days (${e.impact} impact) - ${e.description}`).join('\n')}`
+    : '\nNo major events in next 7 days'
+
+  const vixContext = vixInterpretation 
+    ? `\nVIX Analysis:\n- Level: ${vixInterpretation.level} (${marketContext.vix.toFixed(2)})\n- Trend: ${vixInterpretation.trend} (change: ${vixInterpretation.change > 0 ? '+' : ''}${vixInterpretation.change.toFixed(2)})\n- Meaning: ${vixInterpretation.meaning}\n- Context: ${vixInterpretation.context}\n- Recommendation: ${vixInterpretation.recommendation}`
+    : ''
+
+  return `You are an expert algorithmic trading advisor specializing in Indian options markets (NIFTY, BANKNIFTY). Analyze the current market conditions with full context.
 
 Market Data:
-- VIX: ${marketContext.vix.toFixed(2)} (${marketContext.volatilityLevel} volatility)
+- VIX: ${marketContext.vix.toFixed(2)} (${marketContext.volatilityLevel} volatility)${vixContext}
 - NIFTY: ${marketContext.niftySpot.toFixed(2)} (${marketContext.niftyChangePercent > 0 ? '+' : ''}${marketContext.niftyChangePercent.toFixed(2)}%)
 - Trend: ${marketContext.trend} (${marketContext.trendStrength} strength)
 - Price Position: ${marketContext.technicalIndicators.pricePosition.toFixed(1)}% of daily range
-- Momentum: ${marketContext.technicalIndicators.momentum.toFixed(2)}%
+- Momentum: ${marketContext.technicalIndicators.momentum.toFixed(2)}%${eventContext}
 
 Current Recommendations:
 ${recommendations.map((r, i) => `${i + 1}. ${r.strategy} (${r.confidence} confidence, score: ${r.score})`).join('\n')}
 
+CRITICAL ANALYSIS REQUIRED:
+1. Why is VIX at current level? (Rising VIX in normal conditions = caution mode)
+2. Is VIX rising due to market decline or upcoming event risk?
+3. What does historical data suggest for similar VIX patterns?
+4. Are there upcoming events (budget, expiry) that could cause volatility spikes?
+5. On event days (budget, expiry), market can move 200+ points - should we wait or use defensive strategies?
+
 Provide:
-1. Market Outlook (1-2 sentences): Overall market sentiment and expected direction
-2. Risk Assessment: Current risk level (low/medium/high) and why
-3. Top Strategy: Which strategy is most suitable now and why
-4. Key Insights: 2-3 actionable insights for options trading
+1. Market Outlook (2-3 sentences): Overall sentiment, WHY VIX is at current level, event impact
+2. Risk Assessment: Current risk level (low/medium/high) with specific reasons
+3. Top Strategy: Which strategy is most suitable NOW considering events and VIX context
+4. Key Insights: 3-4 actionable insights including:
+   - Why VIX is rising/falling
+   - Event risk assessment
+   - Historical pattern comparison
+   - Position sizing recommendations for current conditions
 
 Format as JSON:
 {
-  "marketOutlook": "...",
-  "riskAssessment": "...",
-  "topStrategy": "...",
-  "insights": ["...", "...", "..."]
+  "marketOutlook": "Detailed 2-3 sentence analysis including VIX interpretation and event context",
+  "riskAssessment": "low/medium/medium-high/high with specific reasons",
+  "topStrategy": "strategy name",
+  "insights": ["insight 1 about VIX", "insight 2 about events", "insight 3 about strategy", "insight 4 about risk"],
+  "vixAnalysis": "Why VIX is at current level and what it means",
+  "eventRisk": "Assessment of upcoming events and their impact"
 }`
 }
 
@@ -170,6 +201,8 @@ function parseAIResponse(aiResponse, marketContext, recommendations) {
         riskAssessment: parsed.riskAssessment || 'medium',
         marketOutlook: parsed.marketOutlook || 'Neutral market conditions',
         topStrategy: parsed.topStrategy || recommendations[0]?.strategy,
+        vixAnalysis: parsed.vixAnalysis || 'VIX analysis pending',
+        eventRisk: parsed.eventRisk || 'No major events detected',
         aiReasoning: aiResponse
       }
     }
@@ -189,10 +222,10 @@ function parseAIResponse(aiResponse, marketContext, recommendations) {
 }
 
 /**
- * Advanced Rule-Based AI (works without OpenAI)
+ * Advanced Rule-Based AI (works without Gemini)
  * Uses sophisticated pattern matching and statistical analysis
  */
-async function enhanceWithRuleBasedAI(marketContext, recommendations, trendAnalysis) {
+async function enhanceWithRuleBasedAI(marketContext, recommendations, trendAnalysis, events = [], vixInterpretation = null) {
   const insights = []
   const riskFactors = []
   let riskLevel = 'low'
@@ -252,7 +285,7 @@ async function enhanceWithRuleBasedAI(marketContext, recommendations, trendAnaly
   // Calculate final confidence (0-100)
   confidenceScore = Math.min(100, Math.max(0, confidenceScore))
 
-  // Market outlook
+  // Market outlook with event context
   let marketOutlook = 'Neutral market conditions'
   if (marketContext.vix >= 20 && marketContext.trend === 'sideways') {
     marketOutlook = 'High volatility, range-bound market - premium collection strategies optimal'
@@ -260,6 +293,36 @@ async function enhanceWithRuleBasedAI(marketContext, recommendations, trendAnaly
     marketOutlook = 'Low volatility with bullish bias - directional buying strategies favored'
   } else if (marketContext.vix >= 25) {
     marketOutlook = 'Extreme volatility - high-risk, high-reward premium collection environment'
+  }
+
+  // Add event context to outlook
+  const upcomingEvents = events.filter(e => e.daysUntil <= 7 && e.impact === 'high')
+  if (upcomingEvents.length > 0) {
+    const event = upcomingEvents[0]
+    marketOutlook += ` | Event risk: ${event.name} in ${event.daysUntil} days - expect increased volatility`
+  }
+
+  // VIX interpretation context
+  let vixAnalysis = 'VIX at normal levels'
+  if (vixInterpretation) {
+    vixAnalysis = `${vixInterpretation.meaning}. ${vixInterpretation.context}`
+  } else {
+    if (marketContext.vix >= 20) {
+      vixAnalysis = 'High VIX indicates market fear/uncertainty - premium collection attractive but risky'
+    } else if (marketContext.vix < 15) {
+      vixAnalysis = 'Low VIX suggests market stability or complacency - good for directional strategies'
+    }
+  }
+
+  // Event risk assessment
+  let eventRisk = 'No major events in next 7 days'
+  if (upcomingEvents.length > 0) {
+    const highImpactEvents = upcomingEvents.filter(e => e.impact === 'high')
+    if (highImpactEvents.length > 0) {
+      eventRisk = `${highImpactEvents.length} high-impact event(s) upcoming - reduce position size, use wider strikes`
+    } else {
+      eventRisk = `${upcomingEvents.length} event(s) upcoming - monitor for volatility changes`
+    }
   }
 
   return {
@@ -272,6 +335,8 @@ async function enhanceWithRuleBasedAI(marketContext, recommendations, trendAnaly
       score: calculateRiskScore(riskLevel, riskFactors.length)
     },
     marketOutlook,
+    vixAnalysis,
+    eventRisk,
     topStrategy: recommendations[0]?.strategy || 'Short Strangle',
     aiReasoning: `Rule-based AI analysis: ${insights.join('; ')}`
   }
