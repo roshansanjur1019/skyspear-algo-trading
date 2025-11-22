@@ -129,6 +129,45 @@ jobs:
             echo "Stopping existing containers..."
             docker compose --env-file .env.angelone --env-file .env.hosting down || true
             
+            # Stop and remove any containers using ports 80/443 (old Caddy, etc.)
+            echo "Stopping containers using ports 80/443..."
+            for container_id in $(docker ps --filter "publish=80" --format "{{.ID}}" 2>/dev/null); do
+              echo "Stopping container $container_id using port 80..."
+              docker stop $container_id || true
+              docker rm -f $container_id || true
+            done
+            
+            for container_id in $(docker ps --filter "publish=443" --format "{{.ID}}" 2>/dev/null); do
+              echo "Stopping container $container_id using port 443..."
+              docker stop $container_id || true
+              docker rm -f $container_id || true
+            done
+            
+            # Remove old Caddy and Nginx containers by name
+            echo "Removing old containers..."
+            docker ps -a --filter "name=caddy" --format "{{.ID}}" | while read id; do
+              [ -n "$id" ] && docker rm -f $id || true
+            done
+            docker ps -a --filter "name=nginx" --format "{{.ID}}" | while read id; do
+              [ -n "$id" ] && docker rm -f $id || true
+            done
+            
+            # Wait a moment for ports to be released
+            sleep 3
+            
+            # Verify ports are free
+            echo "Verifying ports 80 and 443 are free..."
+            if command -v lsof >/dev/null 2>&1; then
+              if lsof -i :80 >/dev/null 2>&1; then
+                echo "⚠️  Port 80 still in use, listing processes:"
+                lsof -i :80 || true
+              fi
+              if lsof -i :443 >/dev/null 2>&1; then
+                echo "⚠️  Port 443 still in use, listing processes:"
+                lsof -i :443 || true
+              fi
+            fi
+            
             # Build all services
             echo "Building Docker images..."
             docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
