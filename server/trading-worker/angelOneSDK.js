@@ -157,14 +157,14 @@ async function createAuthenticatedClient(credentials) {
 
     // Cache the authentication - sessions are valid until 12 midnight IST
     // Calculate expiry: next midnight IST (5:30 AM UTC = 12:00 AM IST)
-    const now = new Date()
-    const istMidnight = new Date(now)
+    const currentDate = new Date()
+    const istMidnight = new Date(currentDate)
     istMidnight.setUTCHours(0, 0, 0, 0) // Set to midnight UTC
     istMidnight.setUTCHours(istMidnight.getUTCHours() + 5) // Add 5 hours for IST
     istMidnight.setUTCMinutes(istMidnight.getUTCMinutes() + 30) // Add 30 minutes for IST offset
     
     // If we've passed midnight IST today, set to next midnight
-    if (istMidnight <= now) {
+    if (istMidnight <= currentDate) {
       istMidnight.setUTCDate(istMidnight.getUTCDate() + 1)
     }
     
