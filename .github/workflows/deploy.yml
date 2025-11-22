@@ -22,48 +22,58 @@ jobs:
           script: |
             set -e
             
-            # Add ~/bin to PATH for the entire script session
-            export PATH="$HOME/bin:$PATH"
+            # Run all commands as root user
+            sudo bash << 'ROOT_SCRIPT'
+            set -e
             
-            # Container-Optimized OS already has Docker pre-installed
-            # Verify Docker is running
-            if ! sudo systemctl is-active --quiet docker; then
-              echo "Starting Docker service..."
-              sudo systemctl start docker || true
-              sudo systemctl enable docker || true
+            # Update system packages
+            echo "Updating system packages..."
+            apt-get update -qq
+            
+            # Install essential tools (git, curl, etc.)
+            apt-get install -y git curl ca-certificates gnupg lsb-release || true
+            
+            # Install Docker if not present
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Installing Docker..."
+              # Remove old versions
+              apt-get remove -y docker docker-engine docker.io containerd runc || true
+              # Prerequisites should already be installed above
+              # Add Docker's official GPG key
+              install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+              chmod a+r /etc/apt/keyrings/docker.gpg
+              # Set up repository
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+              # Install Docker
+              apt-get update -qq
+              apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+            else
+              echo "Docker is already installed"
+              docker --version
             fi
             
-            # Check if docker compose is available (try plugin first, then standalone)
+            # Start and enable Docker service
+            systemctl start docker || true
+            systemctl enable docker || true
+            
+            # Install Docker Compose plugin
             if docker compose version >/dev/null 2>&1; then
-              echo "Docker Compose plugin is available"
+              echo "Docker Compose plugin is already available"
               docker compose version
-            elif command -v docker-compose >/dev/null 2>&1; then
-              echo "Docker Compose standalone is available"
-              docker-compose version
             else
-              echo "Installing Docker Compose..."
-              # For Container-Optimized OS, most system directories are read-only
-              # Install plugin to user's home directory (writable)
-              mkdir -p ~/.docker/cli-plugins
-              curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
-              chmod +x ~/.docker/cli-plugins/docker-compose
-              # Also install standalone binary as fallback (in case sudo -E doesn't work)
-              mkdir -p ~/bin
-              cp ~/.docker/cli-plugins/docker-compose ~/bin/docker-compose
-              chmod +x ~/bin/docker-compose
+              echo "Installing Docker Compose plugin..."
+              # Install to system location (writable on Ubuntu)
+              mkdir -p /usr/local/lib/docker/cli-plugins
+              curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+              chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
               # Verify installation
               docker compose version
-              # Test with sudo -E (preserves HOME environment variable for plugin)
-              if sudo -E docker compose version >/dev/null 2>&1; then
-                echo "Docker Compose plugin works with sudo -E"
-              else
-                echo "Warning: sudo -E may not work, will use standalone binary as fallback"
-              fi
             fi
             
-            # Create app directory in /home (writable in COS)
-            mkdir -p ~/apps/nifty-stride-trader
-            cd ~/apps/nifty-stride-trader
+            # Create app directory in /opt (standard location for applications)
+            mkdir -p /opt/nifty-stride-trader
+            cd /opt/nifty-stride-trader
             
             # Clone or update repository
             if [ -d .git ]; then
@@ -101,10 +111,10 @@ jobs:
               echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.hosting
             fi
             
-            # Clean up Docker to free disk space (important for COS)
+            # Clean up Docker to free disk space
             echo "Cleaning up Docker to free disk space..."
-            sudo docker system prune -af --volumes || true
-            sudo docker builder prune -af || true
+            docker system prune -af --volumes || true
+            docker builder prune -af || true
             
             # Check disk space
             echo "Disk space check:"
@@ -112,21 +122,22 @@ jobs:
             
             # Stop and remove trading-worker container to force recreation
             echo "Stopping existing containers..."
-            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
-            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
+            docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
+            docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
             
             # Build all services
             echo "Building Docker images..."
-            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
+            docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
             
             # Start all services (trading-worker will be recreated)
             echo "Starting all services..."
-            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting up -d
+            docker compose --env-file .env.angelone --env-file .env.hosting up -d
             
             # Verify containers are running
             echo "Container status:"
-            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting ps
+            docker compose --env-file .env.angelone --env-file .env.hosting ps
             
             # Show recent logs
             echo "Recent logs from trading-worker:"
-            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=50 trading-worker || true
+            docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=50 trading-worker || true
+            ROOT_SCRIPT
