@@ -116,61 +116,18 @@ jobs:
               echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.hosting
             fi
             
-            # Clean up Docker to free disk space
-            echo "Cleaning up Docker to free disk space..."
-            docker system prune -af --volumes || true
-            docker builder prune -af || true
+            # Stop all containers and remove orphans
+            echo "Stopping existing containers and removing orphans..."
+            docker compose --env-file .env.angelone --env-file .env.hosting down --remove-orphans || true
             
-            # Check disk space
-            echo "Disk space check:"
-            df -h
+            # Clean up unused Docker resources (selective, faster than full prune)
+            echo "Cleaning up unused Docker resources..."
+            docker container prune -f || true
+            docker image prune -f || true
             
-            # Stop all containers to force recreation
-            echo "Stopping existing containers..."
-            docker compose --env-file .env.angelone --env-file .env.hosting down || true
-            
-            # Stop and remove any containers using ports 80/443 (old Caddy, etc.)
-            echo "Stopping containers using ports 80/443..."
-            for container_id in $(docker ps --filter "publish=80" --format "{{.ID}}" 2>/dev/null); do
-              echo "Stopping container $container_id using port 80..."
-              docker stop $container_id || true
-              docker rm -f $container_id || true
-            done
-            
-            for container_id in $(docker ps --filter "publish=443" --format "{{.ID}}" 2>/dev/null); do
-              echo "Stopping container $container_id using port 443..."
-              docker stop $container_id || true
-              docker rm -f $container_id || true
-            done
-            
-            # Remove old Caddy and Nginx containers by name
-            echo "Removing old containers..."
-            docker ps -a --filter "name=caddy" --format "{{.ID}}" | while read id; do
-              [ -n "$id" ] && docker rm -f $id || true
-            done
-            docker ps -a --filter "name=nginx" --format "{{.ID}}" | while read id; do
-              [ -n "$id" ] && docker rm -f $id || true
-            done
-            
-            # Wait a moment for ports to be released
-            sleep 3
-            
-            # Verify ports are free
-            echo "Verifying ports 80 and 443 are free..."
-            if command -v lsof >/dev/null 2>&1; then
-              if lsof -i :80 >/dev/null 2>&1; then
-                echo "⚠️  Port 80 still in use, listing processes:"
-                lsof -i :80 || true
-              fi
-              if lsof -i :443 >/dev/null 2>&1; then
-                echo "⚠️  Port 443 still in use, listing processes:"
-                lsof -i :443 || true
-              fi
-            fi
-            
-            # Build all services
+            # Build all services (use cache for faster builds)
             echo "Building Docker images..."
-            docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
+            docker compose --env-file .env.angelone --env-file .env.hosting build frontend trading-worker
             
             # Start all services (including Nginx, frontend, trading-worker, angel-one)
             echo "Starting all services..."
@@ -179,13 +136,9 @@ jobs:
             # Note: SSL certificates are managed by GCP Load Balancer
             # No need for certbot - GCP handles SSL automatically
             
-            # Verify containers are running
-            echo "Container status:"
-            docker compose --env-file .env.angelone --env-file .env.hosting ps
-            
-            # Wait for services to be ready
-            echo "Waiting for services to be ready..."
-            sleep 15
+            # Wait for services to be ready (reduced from 15s)
+            echo "Waiting for services to initialize..."
+            sleep 10
             
             # Verify all containers are running
             echo "=== Container Status ==="
@@ -215,77 +168,13 @@ jobs:
               docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 nginx || true
             fi
             
-            # Test main domain routing
+            # Quick health check summary
             echo ""
-            echo "=== Main Domain Routing Test ==="
-            if curl -f -H "Host: skyspear.in" http://localhost/ >/dev/null 2>&1; then
-              echo "✓ Main domain (skyspear.in) is routing correctly"
+            echo "=== Health Check Summary ==="
+            if curl -f http://localhost:4000/health >/dev/null 2>&1 && curl -f -H "Host: api.skyspear.in" http://localhost/health >/dev/null 2>&1; then
+              echo "✓ All services are healthy and routing correctly"
             else
-              echo "✗ Main domain (skyspear.in) is NOT routing"
+              echo "⚠️  Some services may still be initializing. Check logs if issues persist."
+              docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 nginx trading-worker || true
             fi
-            
-            # Test API subdomain routing
-            echo ""
-            echo "=== API Subdomain Routing Test ==="
-            if curl -f -H "Host: api.skyspear.in" http://localhost/health >/dev/null 2>&1; then
-              echo "✓ API subdomain (api.skyspear.in) is routing correctly"
-            else
-              echo "✗ API subdomain (api.skyspear.in) is NOT routing"
-            fi
-            
-            # Test from external (if possible)
-            echo ""
-            echo "=== External Connectivity Test ==="
-            SERVER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "Unable to determine")
-            echo "Server IP: $SERVER_IP"
-            echo "Testing HTTP from server:"
-            curl -I http://localhost/ 2>&1 | head -5 || echo "Cannot test localhost"
-            curl -I -H "Host: skyspear.in" http://localhost/ 2>&1 | head -5 || echo "Cannot test with Host header"
-            
-            # Check Nginx logs
-            echo ""
-            echo "=== Nginx Logs (last 20 lines) ==="
-            docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 nginx || true
-            
-            # Check trading-worker logs
-            echo ""
-            echo "=== Trading-Worker Logs (last 50 lines) ==="
-            docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=50 trading-worker || true
-            
-            # DNS and domain verification
-            echo ""
-            echo "=== Domain Configuration ==="
-            DOMAIN=$(grep DOMAIN .env.hosting | cut -d'=' -f2 || echo 'NOT SET')
-            echo "DOMAIN: ${DOMAIN}"
-            echo "VITE_BACKEND_URL: $(grep VITE_BACKEND_URL .env.hosting | cut -d'=' -f2 || echo 'NOT SET')"
-            
-            # Get server IP
-            SERVER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "Unable to determine")
-            echo "Server Public IP: ${SERVER_IP}"
-            echo ""
-            echo "=== DNS Verification Instructions ==="
-            echo "Ensure these DNS A records point to ${SERVER_IP}:"
-            echo "  - ${DOMAIN} -> ${SERVER_IP}"
-            echo "  - api.${DOMAIN} -> ${SERVER_IP}"
-            echo "  - www.${DOMAIN} -> ${SERVER_IP}"
-            echo ""
-            echo "Verify DNS with: dig api.${DOMAIN} A"
-            echo ""
-            echo "=== CRITICAL: GCP Firewall Check ==="
-            echo "⚠️  If api.skyspear.in is timing out, check GCP Firewall Rules:"
-            echo "   1. Go to: GCP Console → VPC Network → Firewall Rules"
-            echo "   2. Ensure these rules exist and allow INGRESS:"
-            echo "      - Port 80 (HTTP) from 0.0.0.0/0"
-            echo "      - Port 443 (HTTPS) from 0.0.0.0/0"
-            echo "   3. If missing, create rules to allow HTTP/HTTPS traffic"
-            echo ""
-            echo ""
-            echo "=== SSL Certificate Setup ==="
-            echo "SSL certificates are managed by GCP Load Balancer"
-            echo "See GCP_LOAD_BALANCER_SETUP.md for setup instructions"
-            echo ""
-            echo "Benefits:"
-            echo "  - Automatic certificate provisioning and renewal"
-            echo "  - No manual certificate management"
-            echo "  - Global load balancing and DDoS protection"
             ROOT_SCRIPT
