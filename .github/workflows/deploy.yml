@@ -127,6 +127,7 @@ jobs:
             
             # Build all services (use cache for faster builds)
             echo "Building Docker images..."
+            # Frontend must be rebuilt to include VITE_BACKEND_URL from .env.hosting
             docker compose --env-file .env.angelone --env-file .env.hosting build frontend trading-worker
             
             # Start all services (including Nginx, frontend, trading-worker, angel-one)

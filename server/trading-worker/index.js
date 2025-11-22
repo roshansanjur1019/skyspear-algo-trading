@@ -21,12 +21,16 @@ const app = express()
 app.use((req, res, next) => {
   const origin = req.headers.origin
   const allowedOrigins = process.env.CORS_ALLOW_ORIGIN 
-    ? process.env.CORS_ALLOW_ORIGIN.split(',')
-    : ['https://skyspear.in', 'http://localhost:5173', 'http://localhost:3000', '*']
+    ? process.env.CORS_ALLOW_ORIGIN.split(',').map(o => o.trim())
+    : ['https://skyspear.in', 'https://www.skyspear.in', 'http://localhost:5173', 'http://localhost:3000']
   
-  if (allowedOrigins.includes('*') || (origin && allowedOrigins.includes(origin))) {
-    res.header('Access-Control-Allow-Origin', origin || '*')
+  // Check if origin is allowed
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin)
+  } else if (allowedOrigins.includes('*')) {
+    res.header('Access-Control-Allow-Origin', '*')
   }
+  // If origin not allowed and no wildcard, don't set header (browser will block)
   
   res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization')
