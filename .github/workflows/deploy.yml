@@ -132,7 +132,16 @@ jobs:
             
             # Start all services (including Nginx, frontend, trading-worker, angel-one)
             echo "Starting all services..."
-            docker compose --env-file .env.angelone --env-file .env.hosting up -d nginx frontend trading-worker angel-one
+            docker compose --env-file .env.angelone --env-file .env.hosting up -d
+            
+            # Setup auto-start on VM reboot (if not already set up)
+            if [ ! -f /etc/systemd/system/nifty-stride-trader.service ]; then
+              echo "Setting up auto-start service..."
+              SERVICE_FILE="/etc/systemd/system/nifty-stride-trader.service"
+              printf '%s\n' '[Unit]' 'Description=Nifty Stride Trader Docker Compose' 'Requires=docker.service' 'After=docker.service' '' '[Service]' 'Type=oneshot' 'RemainAfterExit=yes' 'WorkingDirectory=/opt/nifty-stride-trader' 'ExecStart=/usr/bin/docker compose --env-file .env.angelone --env-file .env.hosting up -d' 'ExecStop=/usr/bin/docker compose --env-file .env.angelone --env-file .env.hosting down' 'TimeoutStartSec=0' '' '[Install]' 'WantedBy=multi-user.target' > "$SERVICE_FILE"
+              systemctl daemon-reload
+              systemctl enable nifty-stride-trader.service || echo "⚠️  Auto-start setup failed (may need manual setup)"
+            fi
             
             # Note: SSL certificates are managed by GCP Load Balancer
             # No need for certbot - GCP handles SSL automatically
