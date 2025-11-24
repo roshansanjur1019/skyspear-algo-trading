@@ -7,6 +7,8 @@ import { Hero } from "@/components/landing/Hero";
 import { Features } from "@/components/landing/Features";
 import { Shield } from "lucide-react";
 
+import { motion } from "framer-motion";
+
 const Index = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -31,7 +33,12 @@ const Index = () => {
   const handleGetStarted = () => navigate(user ? "/dashboard" : "/auth");
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="min-h-screen bg-background text-foreground overflow-x-hidden"
+    >
       <Header user={user} onLogin={handleLogin} onLogout={handleLogout} />
 
       <main>
@@ -61,8 +68,8 @@ const Index = () => {
             <div>
               <h4 className="font-semibold mb-6 text-foreground">Platform</h4>
               <ul className="space-y-4 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-primary transition-colors">Features</a></li>
-                <li><a href="#" className="hover:text-primary transition-colors">Pricing</a></li>
+                <li><button onClick={() => navigate("/features")} className="hover:text-primary transition-colors">Features</button></li>
+                <li><button onClick={() => navigate("/pricing")} className="hover:text-primary transition-colors">Pricing</button></li>
                 <li><a href="#" className="hover:text-primary transition-colors">API Docs</a></li>
                 <li><a href="#" className="hover:text-primary transition-colors">Status</a></li>
               </ul>
@@ -84,9 +91,8 @@ const Index = () => {
           </div>
         </div>
       </footer>
-    </div>
+    </motion.div>
   );
 };
 
 export default Index;
-
